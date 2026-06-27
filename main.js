@@ -19,11 +19,14 @@
       g3 = cv3.getContext("2d"), gG = cvG.getContext("2d");
   var geom = { Nx: Nx, Ny: Ny, zoom: 1, jBot: sim.jBot, jTop: sim.jTop,
                plateColStart: cfg.plateColStart, plateColEnd: cfg.plateColEnd,
-               sourceI: sim.sourceI, sourceJ: sim.sourceJ, mouthI: mouthI };
+               sourceI: sim.sourceI, sourceJ: sim.sourceJ, mouthI: mouthI,
+               pml: cfg.pml || 10 };
 
-  var playing = true, speed = 3, scale = 0.6;
+  var playing = true, speed = 3, scale = 0.3;
   var measCount = 0, period = sim.periodSteps();
   var graphRow = new Float32Array(Nx);
+  var scatterBuf = new Float32Array(Nx * Ny);  // 산란 Re{E_sc} 스냅샷
+  var scatterScale = scale;                     // 패널 ② 자체 스케일
   sim.beginMeasure();
 
   function onParamChange() { sim.beginMeasure(); measCount = 0; period = sim.periodSteps(); }
@@ -39,15 +42,23 @@
       (sim.aCells * DX_CM).toFixed(0) + " cm (λc=" + (2 * sim.aCells * DX_CM).toFixed(0) + " cm)";
     document.getElementById("ampVal").textContent = sim.amp.toFixed(1);
 
+    // 패널 ② 라벨: 자체 스케일 배율 표시
+    var lbl2 = document.getElementById("label2");
+    if (lbl2) {
+      var mag = scatterScale > 1e-3 ? "×" + (scale / scatterScale).toFixed(1) + " 확대" : "";
+      lbl2.textContent = "② 산란 Re{E_sc}" + (mag ? " (" + mag + ")" : "");
+    }
+
     // κ 검증: 내부여기 & 소멸일 때 양방향 fit 평균
+    var pml = cfg.pml || 10;
     var kInfo = document.getElementById("kappaInfo");
     if (r === "internal" && info.evanescent && info.kappa) {
       var si = sim.sourceI;
       var xsR = [], ysR = [], xsL = [], ysL = [];
-      for (var i = si + 8; i <= Math.min(Nx - 12, si + 40); i++) {
+      for (var i = si + 8; i <= Math.min(Nx - pml - 2, si + 40); i++) {
         xsR.push(i - si); ysR.push(graphRow[i] + 1e-9);
       }
-      for (var i2 = Math.max(11, si - 40); i2 <= si - 8; i2++) {
+      for (var i2 = Math.max(pml + 1, si - 40); i2 <= si - 8; i2++) {
         xsL.push(si - i2); ysL.push(graphRow[i2] + 1e-9);
       }
       var kR = xsR.length > 1 ? NS.physics.fitExponential(xsR, ysR).kappa : 0;
@@ -79,8 +90,9 @@
   }
 
   function reflectionPercent(row) {
+    var pml = cfg.pml || 10;
     var mn = Infinity, mx = 0;
-    for (var i = mouthI + 5; i < Nx - 5; i++) {
+    for (var i = mouthI + 5; i < Nx - pml; i++) {
       if (row[i] <= 0) continue;
       if (row[i] < mn) mn = row[i];
       if (row[i] > mx) mx = row[i];
@@ -101,12 +113,18 @@
         sim.accumulateMeasure();
         if (++measCount >= period) {
           graphRow = sim.centerlineAmp();
+          sim.scatteredRe(scatterBuf);
+          var s2 = 1e-9;
+          for (var k = 0; k < scatterBuf.length; k++) {
+            var av = Math.abs(scatterBuf[k]); if (av > s2) s2 = av;
+          }
+          scatterScale = Math.max(s2, 1e-4);
           sim.beginMeasure(); measCount = 0;
         }
       }
     }
     NS.render.paintField(g1, sim.incidentFrame(), Nx, Ny, scale, geom);
-    NS.render.paintField(g2, sim.scatteredFrame(), Nx, Ny, scale, geom);
+    NS.render.paintField(g2, scatterBuf, Nx, Ny, scatterScale, geom);
     NS.render.paintField(g3, sim.totalFrame(), Nx, Ny, scale, geom);
     var gl = geomLive();
     NS.render.drawGuide(g1, gl);

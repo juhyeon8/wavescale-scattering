@@ -34,6 +34,18 @@ test("판이 없으면 산란≈0", () => {
   assert.ok(mx < 1e-3, "산란 거의 0: " + mx);
 });
 
+test("scatteredRe: 판 없으면 ≈ 0", () => {
+  const cfg = baseCfg(); cfg.plateColStart = 0; cfg.plateColEnd = -1;
+  const s = new WaveSim(cfg);
+  s.setSourceCell(60, 30); s.setLambda(14);
+  for (let n = 0; n < 80; n++) s.step();
+  s.measurePhasors(2);
+  const out = new Float32Array(cfg.Nx * cfg.Ny);
+  s.scatteredRe(out);
+  let mx = 0; for (let k = 0; k < out.length; k++) mx = Math.max(mx, Math.abs(out[k]));
+  assert.ok(mx < 1e-3, "산란 Re 거의 0: " + mx);
+});
+
 test("산란 순간장 = 전체 − 입사", () => {
   const s = new WaveSim(baseCfg());
   s.setSourceCell(80, 30); s.setLambda(14);

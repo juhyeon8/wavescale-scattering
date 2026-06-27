@@ -2,11 +2,12 @@
 (function (global) {
   function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
+  var GAMMA = 0.45;
   function divergingColor(value, scale) {
-    const t = clamp(value / scale, -1, 1);
-    if (t >= 0) return [255, Math.round(255 * (1 - t)), Math.round(255 * (1 - t))];
-    const a = -t;
-    return [Math.round(255 * (1 - a)), Math.round(255 * (1 - a)), 255];
+    var t = clamp(value / scale, -1, 1);
+    var mag = Math.pow(Math.abs(t), GAMMA);
+    if (t >= 0) return [255, Math.round(255 * (1 - mag)), Math.round(255 * (1 - mag))];
+    return [Math.round(255 * (1 - mag)), Math.round(255 * (1 - mag)), 255];
   }
 
   // field: Float32Array(Nx*Ny), i=x열 j=y행. 화면 y는 위가 0이므로 j를 뒤집음.
@@ -44,17 +45,21 @@
   function drawGraph(ctx, row, geom, opts) {
     const W = ctx.canvas.width, H = ctx.canvas.height;
     ctx.clearRect(0, 0, W, H);
-    let mx = 1e-9; for (let i = 0; i < row.length; i++) mx = Math.max(mx, row[i]);
+    const pml = (geom && geom.pml) ? geom.pml : 0;
+    const nx  = (geom && geom.Nx)  ? geom.Nx  : row.length;
+    const i0 = pml, i1 = nx - 1 - pml;
+    let mx = 1e-9;
+    for (let i = i0; i <= i1; i++) mx = Math.max(mx, row[i]);
     ctx.strokeStyle = opts && opts.evanescent ? "#c0392b" : "#2f6feb";
     ctx.lineWidth = 2; ctx.beginPath();
-    for (let i = 0; i < row.length; i++) {
-      const x = i / (row.length - 1) * W;
+    for (let i = i0; i <= i1; i++) {
+      const x = (i - i0) / (i1 - i0) * W;
       const y = H - (row[i] / mx) * (H - 8) - 4;
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      if (i === i0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
     }
     ctx.stroke();
     if (geom && geom.mouthI != null) {
-      const xm = geom.mouthI / (row.length - 1) * W;
+      const xm = (geom.mouthI - i0) / (i1 - i0) * W;
       ctx.strokeStyle = "#999"; ctx.setLineDash([4, 4]);
       ctx.beginPath(); ctx.moveTo(xm, 0); ctx.lineTo(xm, H); ctx.stroke();
       ctx.setLineDash([]);

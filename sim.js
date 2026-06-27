@@ -77,6 +77,14 @@
 
   WaveSim.prototype.incidentAmp = function (out) { return this.incident.phasorAmp(out); };
   WaveSim.prototype.totalAmp = function (out) { return this.total.phasorAmp(out); };
+  WaveSim.prototype.scatteredRe = function (out) {
+    var ci = this.incident.phasorComplex(), ct = this.total.phasorComplex();
+    for (var k = 0; k < out.length; k++) {
+      out[k] = ct.factor * ct.re[k] - ci.factor * ci.re[k];
+    }
+    return out;
+  };
+
   WaveSim.prototype.scatteredAmp = function (out) {
     const ci = this.incident.phasorComplex(), ct = this.total.phasorComplex();
     for (let k = 0; k < out.length; k++) {
