@@ -10,7 +10,7 @@
   <div id="canvasWrap"><canvas id="canvas"></canvas></div>
   <div id="panel">
     <h1>패러데이 케이지 산란</h1>
-    <div class="sub">일렬로 늘어선 원통형 무한 도선에 평면파(오른→왼)가 입사할 때의
+    <div class="sub">일렬로 늘어선 원통형 무한 도선에 평면파(<b>왼→오른</b>)가 입사할 때의
       <b>입사파 / 산란파 / 중첩</b>을 위에서 아래로 보여줍니다. 도선 간격에 비해 파장이
       길어질수록 중첩 결과가 상쇄되어 차폐가 일어납니다.</div>
 
@@ -58,6 +58,11 @@
       <label style="width:48px">위상</label>
       <input type="range" id="phaseSlider" min="0" max="360" step="1" value="0">
       <span class="valbox" id="phaseVal">0°</span>
+    </div>
+    <div class="hint" id="phaseHint" style="margin-top:0; display:none">
+      전자기파는 시간에 따라 진동합니다. <b>위상(0°→360°)</b>은 한 주기 안의 '시각'입니다.
+      슬라이더를 움직이면 파동이 어느 순간에 있는지를 정지 화면으로 탐색할 수 있습니다.
+      0°와 360°는 같은 순간(한 주기 후)이고, 180°는 빨강·파랑이 반전된 순간입니다.
     </div>
 
     <h2>현재 상태</h2>

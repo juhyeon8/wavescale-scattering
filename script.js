@@ -151,10 +151,15 @@
     const cRe = new Float64Array(N), cIm = new Float64Array(N);
     for (let n = 0; n < N; n++) { cRe[n] = c[n * 2]; cIm[n] = c[n * 2 + 1]; }
 
-    // --- 화면 창(window): 가로 = ±3λ, 세로는 패널 종횡비에 맞춰 (원이 원으로 보이게)
-    const Xw = 3 * lam_m;
+    // --- 화면 창(window): 배열 전체가 항상 보이도록 자동 확대
+    //     Yw = max(3λ × 종횡비,  배열전체높이 × 1.25) 로 잡고,
+    //     Xw = Yw / 종횡비 로 유지 → 원통파 원형 왜곡 없음
+    const arrHalf = (N - 1) * d_m / 2;
     const aspect = layout.bandH / layout.bandW;
-    const Yw = Xw * aspect;
+    const YwMin = 3 * lam_m * aspect;          // 파장 기준 최소 세로
+    const YwArr = arrHalf * 1.25;              // 배열 전체 보기 기준
+    const Yw = Math.max(YwMin, YwArr);
+    const Xw = Yw / aspect;
     const gridW = layout.gridW;
     const gridH = Math.max(40, Math.round(gridW * aspect));
 
@@ -169,10 +174,10 @@
       for (let gi = 0; gi < gridW; gi++) {
         const wx = -Xw + (gi + 0.5) / gridW * 2 * Xw;
         const idx = gj * gridW + gi;
-        // 입사파 Ψ = e^{-i k x}
+        // 입사파 Ψ = e^{+ikx}  (왼→오른 진행, 시간인자 e^{-iωt}와 결합하면 cos(kx-ωt))
         const ph = k * wx;
         incRe[idx] = Math.cos(ph);
-        incIm[idx] = -Math.sin(ph);
+        incIm[idx] = Math.sin(ph);
         // 산란파 Σ c_n H0(k ρ_n)
         let sr = 0, si = 0;
         for (let n = 0; n < N; n++) {
@@ -210,7 +215,7 @@
     const k = solver.k, N = state.N, wiresY = solver.wiresY;
     const d_m = state.d_mm / 1000;
     const arrHalf = (N - 1) * d_m / 2;
-    const xMeas = -Math.max(0.02, 1.5 * d_m);          // 배열 뒤 고정 거리 [m]
+    const xMeas = +Math.max(0.02, 1.5 * d_m);           // 배열 오른쪽(투과영역) 고정 거리 [m]
     const yHalf = Math.min(0.3 * arrHalf, 0.06);       // 중앙부만 (가장자리 회피)
     const samples = 41;
     let sum = 0;
@@ -330,7 +335,11 @@
 
     // 도선 (산란/중첩 칸에 표시; 입사 칸엔 위치만 옅게)
     const sPx = layout.bandW / (2 * solver.Xw);     // px per meter (가로=세로 동일)
-    const rPx = Math.max(1.6, solver.aEff_m * sPx);
+    const dPx = state.d_mm / 1000 * sPx;            // 도선 간격 [px]
+    // 반지름: 물리값(a)은 λ 대비 매우 작아 픽셀로 보이지 않으므로 a/d 비율 × 5배 과장 표시
+    //         (물리 계산은 aEff_m으로 정확히 수행, 표시만 과장)
+    const aRatio = solver.aEff_m / (state.d_mm / 1000);  // a/d
+    const rPx = Math.min(dPx * 0.48, Math.max(2.5, dPx * aRatio * 5));
     const showWires = band !== 0;
     // 중심선
     const top = worldToBand(0, solver.Yw, by), bot = worldToBand(0, -solver.Yw, by);
@@ -347,16 +356,16 @@
       else { ctx.fillStyle = "rgba(120,120,128,0.45)"; ctx.fill(); }
     }
 
-    // 진행방향 화살표 (입사 칸)
+    // 진행방향 화살표 (입사 칸, 왼→오른)
     if (band === 0) {
-      const ay = by + 16, ax = bx + bw - 16;
+      const ay = by + 16, ax = bx + 16;
       ctx.fillStyle = "#444"; ctx.strokeStyle = "#444"; ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(ax - 34, ay); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(ax - 34, ay); ctx.lineTo(ax - 27, ay - 4); ctx.lineTo(ax - 27, ay + 4); ctx.closePath(); ctx.fill();
-      ctx.font = "11px sans-serif"; ctx.textAlign = "right";
-      ctx.fillText("입사파 진행", ax, ay - 8);
+      ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(ax + 34, ay); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(ax + 34, ay); ctx.lineTo(ax + 27, ay - 4); ctx.lineTo(ax + 27, ay + 4); ctx.closePath(); ctx.fill();
+      ctx.font = "11px sans-serif"; ctx.textAlign = "left";
+      ctx.fillText("입사파 진행 →", ax, ay - 8);
       // 편광 표시
-      drawPolIndicator(bx + 14, by + 18);
+      drawPolIndicator(bx + 14, by + 36);
     }
 
     // 밴드 제목
@@ -365,7 +374,7 @@
     ctx.fillText(BAND_TITLES[band], bx + 10, by + bh - 10);
     if (band === 2) {
       ctx.font = "11px sans-serif"; ctx.fillStyle = "#5a5a62";
-      ctx.fillText("왼쪽=차폐영역 · 오른쪽=반사 간섭무늬(차폐 강할수록 정재파에 근접)", bx + 120, by + bh - 10);
+      ctx.fillText("오른쪽=차폐영역 · 왼쪽=반사 간섭무늬(차폐 강할수록 정재파에 근접)", bx + 120, by + bh - 10);
     }
   }
 
@@ -464,6 +473,7 @@
     state.playing = !state.playing;
     playBtn.textContent = state.playing ? "‖ 일시정지" : "▶ 재생";
     phaseWrap.classList.toggle("on", !state.playing);
+    document.getElementById("phaseHint").style.display = state.playing ? "none" : "block";
   });
   phaseSlider.addEventListener("input", () => {
     state.phase = parseFloat(phaseSlider.value) * Math.PI / 180;
