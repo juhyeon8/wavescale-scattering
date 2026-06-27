@@ -17,14 +17,22 @@
 
     this.incident = new FDTD2D(cfg.Nx, cfg.Ny, cfg.courant);
     this.total = new FDTD2D(cfg.Nx, cfg.Ny, cfg.courant);
-    const pml = cfg.pml || 10;
+    var pml = cfg.pml || 10;
     this.incident.setupPML(pml); this.total.setupPML(pml); // 두 격자 동일 PML
-    // 전체 격자에만 PEC 평행판 마스크
-    const mask = new Uint8Array(cfg.Nx * cfg.Ny);
-    if (cfg.plateColEnd >= cfg.plateColStart) {
-      for (let i = cfg.plateColStart; i <= cfg.plateColEnd; i++) {
-        mask[this.total.idx(i, this.jBot)] = 1;
-        mask[this.total.idx(i, this.jTop)] = 1;
+    // PML 영역 안에는 벽을 깔지 않음(PML이 우선): plateColEnd을 PML 경계 앞으로 절단
+    var wallThick = cfg.wallThick || 2;
+    var plateEnd = Math.min(cfg.plateColEnd, cfg.Nx - 1 - pml);
+    this.plateColEnd = plateEnd; // setSourceCell·drawGuide에서 참조
+    // 전체 격자에만 PEC 평행판 마스크 (두께 wallThick 셀)
+    var mask = new Uint8Array(cfg.Nx * cfg.Ny);
+    if (plateEnd >= cfg.plateColStart) {
+      for (var pi = cfg.plateColStart; pi <= plateEnd; pi++) {
+        for (var w = 0; w < wallThick; w++) {
+          var jb = this.jBot - w;
+          var jt = this.jTop + w;
+          if (jb >= 0)         mask[this.total.idx(pi, jb)] = 1;
+          if (jt < cfg.Ny)     mask[this.total.idx(pi, jt)] = 1;
+        }
       }
     }
     this.total.setPECMask(mask);
@@ -34,8 +42,8 @@
   WaveSim.prototype.setSourceCell = function (i, j) {
     i = Math.max(1, Math.min(this.Nx - 2, Math.round(i)));
     // 판 사이 구간(도파관 안)일 때만 j 클램프; 자유공간 바깥은 자유
-    if (i >= this.cfg.plateColStart && i <= this.cfg.plateColEnd &&
-        this.cfg.plateColEnd >= this.cfg.plateColStart) {
+    if (i >= this.cfg.plateColStart && i <= this.plateColEnd &&
+        this.plateColEnd >= this.cfg.plateColStart) {
       j = Math.max(this.jBot + 2, Math.min(this.jTop - 2, Math.round(j)));
     } else {
       j = Math.max(1, Math.min(this.Ny - 2, Math.round(j)));
@@ -113,8 +121,9 @@
   };
   WaveSim.prototype.reflectionPercent = function (centerline) {
     var row = centerline || this.centerlineAmp();
+    var rPml = this.cfg.pml || 10;
     var mn = Infinity, mx = 0;
-    for (var i = this.mouthI + 5; i < this.Nx - 5; i++) {
+    for (var i = this.mouthI + 5; i < this.Nx - rPml; i++) {
       if (row[i] <= 0) continue;
       if (row[i] < mn) mn = row[i];
       if (row[i] > mx) mx = row[i];

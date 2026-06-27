@@ -31,15 +31,22 @@
 
   function drawGuide(ctx, geom) {
     const z = geom.zoom || 1, Ny = geom.Ny;
-    const yTop = (Ny - 1 - geom.jTop) * z, yBot = (Ny - 1 - geom.jBot) * z;
-    ctx.strokeStyle = "#444"; ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(geom.plateColStart * z, yTop); ctx.lineTo(geom.plateColEnd * z, yTop);
-    ctx.moveTo(geom.plateColStart * z, yBot); ctx.lineTo(geom.plateColEnd * z, yBot);
-    ctx.stroke();
+    const wt = geom.wallThick || 1; // 벽 두께(셀 수)
+    const x0 = geom.plateColStart * z;
+    const xw = (geom.plateColEnd - geom.plateColStart) * z;
+    // 화면 y: screen_y = (Ny-1-j)*z (j=0이 화면 아래)
+    // 상단 벽: j = jTop(내면) … jTop+wt-1(외면) → screen_y 작은 쪽부터 아래로
+    const yTopInner = (Ny - 1 - geom.jTop) * z;
+    const yTopOuter = (Ny - 1 - (geom.jTop + wt - 1)) * z; // yTopOuter < yTopInner
+    // 하단 벽: j = jBot(내면) … jBot-wt+1(외면)
+    const yBotInner = (Ny - 1 - geom.jBot) * z;
+    const yBotOuter = (Ny - 1 - (geom.jBot - wt + 1)) * z; // yBotOuter > yBotInner
+    ctx.fillStyle = "rgba(40,40,40,0.85)";
+    ctx.fillRect(x0, yTopOuter, xw, yTopInner - yTopOuter + 1); // 상단 벽
+    ctx.fillRect(x0, yBotInner, xw, yBotOuter - yBotInner + 1); // 하단 벽
     const sx = geom.sourceI * z, sy = (Ny - 1 - geom.sourceJ) * z;
-    ctx.fillStyle = "#111"; ctx.beginPath();
-    ctx.arc(sx, sy, 5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#ff6600"; ctx.beginPath();
+    ctx.arc(sx, sy, 4, 0, Math.PI * 2); ctx.fill();
   }
 
   function drawGraph(ctx, row, geom, opts) {

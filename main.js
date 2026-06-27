@@ -4,8 +4,12 @@
   var DX_CM = 0.5; // cm per cell
   var Nx = 480, Ny = 240;
   var aCells = 24, mouthI = Math.round(Nx * 0.25);
+  var pml = 10;
+  // plateColEnd: PML 바로 앞(469)까지만 → PML이 자동으로 오른쪽 끝 역할
+  // wallThick: 벽 두께(셀) — 수치 누설 억제
   var cfg = { Nx: Nx, Ny: Ny, aCells: aCells, mouthI: mouthI,
-              plateColStart: mouthI, plateColEnd: Nx - 1, courant: 0.5 };
+              plateColStart: mouthI, plateColEnd: Nx - 1 - pml,
+              courant: 0.5, pml: pml, wallThick: 2 };
   var sim = new NS.Sim(cfg);
   sim.setLambda(28); sim.setSourceCell(Math.round(Nx * 0.12), sim.jMid);
 
@@ -18,9 +22,9 @@
   var g1 = cv1.getContext("2d"), g2 = cv2.getContext("2d"),
       g3 = cv3.getContext("2d"), gG = cvG.getContext("2d");
   var geom = { Nx: Nx, Ny: Ny, zoom: 1, jBot: sim.jBot, jTop: sim.jTop,
-               plateColStart: cfg.plateColStart, plateColEnd: cfg.plateColEnd,
+               plateColStart: cfg.plateColStart, plateColEnd: sim.plateColEnd,
                sourceI: sim.sourceI, sourceJ: sim.sourceJ, mouthI: mouthI,
-               pml: cfg.pml || 10 };
+               pml: pml, wallThick: cfg.wallThick || 2 };
 
   var playing = true, speed = 3, scale = 0.3;
   var measCount = 0, period = sim.periodSteps();
@@ -58,7 +62,8 @@
       for (var i = si + 8; i <= Math.min(Nx - pml - 2, si + 40); i++) {
         xsR.push(i - si); ysR.push(graphRow[i] + 1e-9);
       }
-      for (var i2 = Math.max(pml + 1, si - 40); i2 <= si - 8; i2++) {
+      // 왼쪽 fit: 입구(mouthI)에서 충분히 떨어진 내부 구간만 (입구 방사·결합 영향 배제)
+      for (var i2 = Math.max(mouthI + 10, si - 40); i2 <= si - 8; i2++) {
         xsL.push(si - i2); ysL.push(graphRow[i2] + 1e-9);
       }
       var kR = xsR.length > 1 ? NS.physics.fitExponential(xsR, ysR).kappa : 0;
@@ -164,6 +169,7 @@
     fresh.setLambda(lam); fresh.setAmp(a); fresh.setSourceCell(si, fresh.jMid);
     sim = fresh;
     geom.jBot = sim.jBot; geom.jTop = sim.jTop;
+    geom.plateColEnd = sim.plateColEnd;
     onParamChange();
   }
 
