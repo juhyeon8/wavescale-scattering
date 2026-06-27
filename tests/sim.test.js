@@ -50,4 +50,16 @@ test("cutoffInfo: λ>2a 면 소멸·모드0", () => {
   assert.strictEqual(ci.modeCount, 0);
   assert.strictEqual(ci.evanescent, true);
 });
+
+test("reflectionPercent: 정재파비에서 % 산출", () => {
+  const s = new WaveSim(baseCfg());
+  // 합성 중심선: 내부 구간에 정재파(min/max) 주입해 SWR 검증
+  const row = new Float32Array(s.Nx);
+  for (let i = 0; i < s.Nx; i++) {
+    row[i] = (i > s.mouthI) ? (2 + Math.cos(i * 0.5)) : 0; // max3 min1 → SWR3
+  }
+  const pct = s.reflectionPercent(row);
+  // SWR=3 → |R|=0.5 → 50%
+  approx(pct, 50, 1, "반사율%");
+});
 done();

@@ -103,6 +103,19 @@
     return P.regimeOf(this.sourceI, this.sourceJ,
       { mouthI: this.mouthI, jBot: this.jBot, jTop: this.jTop });
   };
+  WaveSim.prototype.reflectionPercent = function (centerline) {
+    var row = centerline || this.centerlineAmp();
+    var mn = Infinity, mx = 0;
+    for (var i = this.mouthI + 5; i < this.Nx - 5; i++) {
+      if (row[i] <= 0) continue;
+      if (row[i] < mn) mn = row[i];
+      if (row[i] > mx) mx = row[i];
+    }
+    if (!isFinite(mn) || mn <= 0) return null;
+    var swr = mx / mn;
+    return P.swrToReflection(swr) * 100;
+  };
+
   WaveSim.prototype.cutoffInfo = function () {
     const kappa = P.attenuationConstant(this.aCells, this.lambdaCells);
     return {
