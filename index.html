@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>패러데이 케이지 산란 시뮬레이션</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <div id="canvasWrap"><canvas id="canvas"></canvas></div>
+  <div id="panel">
+    <h1>패러데이 케이지 산란</h1>
+    <div class="sub">일렬로 늘어선 원통형 무한 도선에 평면파(오른→왼)가 입사할 때의
+      <b>입사파 / 산란파 / 중첩</b>을 위에서 아래로 보여줍니다. 도선 간격에 비해 파장이
+      길어질수록 중첩 결과가 상쇄되어 차폐가 일어납니다.</div>
+
+    <h2>도선 설정</h2>
+    <div class="row">
+      <label style="width:48px">반지름 a</label>
+      <input type="range" id="aSlider" min="0.05" max="3" step="0.05" value="0.5">
+      <span class="valbox" id="aVal"></span>
+    </div>
+    <div class="row">
+      <label style="width:48px">간격 d</label>
+      <input type="range" id="dSlider" min="1" max="60" step="0.5" value="10">
+      <span class="valbox" id="dVal"></span>
+    </div>
+    <div class="row">
+      <label style="width:48px">개수 N</label>
+      <input type="range" id="nSlider" min="2" max="60" step="1" value="30">
+      <span class="valbox" id="nVal"></span>
+    </div>
+
+    <h2>파동 설정</h2>
+    <div class="row">
+      <label style="width:48px">파장 λ</label>
+      <input type="range" id="lamSlider" min="1" max="30" step="0.1" value="12.2">
+      <span class="valbox" id="lamVal"></span>
+    </div>
+    <div class="row">
+      <label style="width:48px">진폭 A</label>
+      <input type="range" id="ampSlider" min="0" max="2" step="0.05" value="1">
+      <span class="valbox" id="ampVal"></span>
+    </div>
+
+    <h2>편광 (전기장 방향)</h2>
+    <div class="segbtns">
+      <button id="polPar" class="active">E∥wire (평행)</button>
+      <button id="polPerp">E⊥wire (수직)</button>
+    </div>
+    <div class="legend" id="polLegend"></div>
+
+    <h2>애니메이션</h2>
+    <div class="ctrlrow">
+      <button class="std" id="playBtn">‖ 일시정지</button>
+    </div>
+    <div class="row" id="phaseWrap">
+      <label style="width:48px">위상</label>
+      <input type="range" id="phaseSlider" min="0" max="360" step="1" value="0">
+      <span class="valbox" id="phaseVal">0°</span>
+    </div>
+
+    <h2>현재 상태</h2>
+    <div class="info" id="infoBox"></div>
+
+    <div class="hint">
+      ① 입사파 ② 산란파(각 도선의 원통파 합) ③ 중첩. 세 칸은 같은 색 스케일이라
+      ①+②를 눈으로 더하면 ③이 됩니다. 색: <b>빨강(+E)</b> · 흰(0) · <span style="color:#2f6feb">파랑(−E)</span>.
+    </div>
+  </div>
+</div>
+<script src="script.js"></script>
+</body>
+</html>
