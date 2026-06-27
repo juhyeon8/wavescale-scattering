@@ -10,27 +10,56 @@
   <div id="canvasWrap"><canvas id="canvas"></canvas></div>
   <div id="panel">
     <h1>패러데이 케이지 산란</h1>
-    <div class="sub">일렬로 늘어선 원통형 무한 도선에 평면파(<b>왼→오른</b>)가 입사할 때의
-      <b>입사파 / 산란파 / 중첩</b>을 위에서 아래로 보여줍니다. 도선 간격에 비해 파장이
-      길어질수록 중첩 결과가 상쇄되어 차폐가 일어납니다.</div>
 
-    <h2>도선 설정</h2>
-    <div class="row">
-      <label style="width:48px">반지름 a</label>
-      <input type="range" id="aSlider" min="0.05" max="3" step="0.05" value="0.5">
-      <span class="valbox" id="aVal"></span>
-    </div>
-    <div class="row">
-      <label style="width:48px">간격 d</label>
-      <input type="range" id="dSlider" min="1" max="60" step="0.5" value="10">
-      <span class="valbox" id="dVal"></span>
-    </div>
-    <div class="row">
-      <label style="width:48px">개수 N</label>
-      <input type="range" id="nSlider" min="2" max="60" step="1" value="30">
-      <span class="valbox" id="nVal"></span>
+    <!-- 탭 버튼 -->
+    <div id="tabBar">
+      <button class="tabBtn active" data-tab="0">무한 배열</button>
+      <button class="tabBtn" data-tab="1">유한 배열</button>
     </div>
 
+    <!-- Pane 0: 무한 배열 (기본) -->
+    <div class="tabPane active" id="pane0">
+      <div class="sub">도선이 창 전체에 가득 차, 무한 배열에 가까운 이상적인 패러데이 케이지를
+        시뮬레이션합니다. 간격 d가 결정되면 도선 수 N이 자동으로 결정됩니다.
+        평면파(왼→오른)가 입사합니다.</div>
+      <h2>도선 설정</h2>
+      <div class="row">
+        <label style="width:48px">반지름 a</label>
+        <input type="range" id="a0Slider" min="0.05" max="3" step="0.05" value="0.5">
+        <span class="valbox" id="a0Val"></span>
+      </div>
+      <div class="row">
+        <label style="width:48px">간격 d</label>
+        <input type="range" id="d0Slider" min="3" max="60" step="0.5" value="10">
+        <span class="valbox" id="d0Val"></span>
+      </div>
+      <div class="autoN">도선 수 N: 자동 (현재 <b id="autoNVal">—</b>개, 창에 가득 참)</div>
+    </div>
+
+    <!-- Pane 1: 유한 배열 -->
+    <div class="tabPane" id="pane1">
+      <div class="sub">도선 수 N을 직접 지정합니다. 개수가 적으면 가장자리 회절이 생겨
+        차폐가 불완전해집니다. 도선이 창에 모두 보이도록 창 크기가 자동 조절됩니다.
+        평면파(왼→오른)가 입사합니다.</div>
+      <h2>도선 설정</h2>
+      <div class="row">
+        <label style="width:48px">반지름 a</label>
+        <input type="range" id="a1Slider" min="0.05" max="3" step="0.05" value="0.5">
+        <span class="valbox" id="a1Val"></span>
+      </div>
+      <div class="row">
+        <label style="width:48px">간격 d</label>
+        <input type="range" id="d1Slider" min="1" max="60" step="0.5" value="10">
+        <span class="valbox" id="d1Val"></span>
+      </div>
+      <div class="row">
+        <label style="width:48px">개수 N</label>
+        <input type="range" id="n1Slider" min="2" max="60" step="1" value="30">
+        <span class="valbox" id="n1Val"></span>
+      </div>
+    </div>
+
+    <!-- 공유: 파동 설정 -->
     <h2>파동 설정</h2>
     <div class="row">
       <label style="width:48px">파장 λ</label>
@@ -43,6 +72,7 @@
       <span class="valbox" id="ampVal"></span>
     </div>
 
+    <!-- 공유: 편광 -->
     <h2>편광 (전기장 방향)</h2>
     <div class="segbtns">
       <button id="polPar" class="active">E∥wire (평행)</button>
@@ -50,6 +80,7 @@
     </div>
     <div class="legend" id="polLegend"></div>
 
+    <!-- 공유: 애니메이션 -->
     <h2>애니메이션</h2>
     <div class="ctrlrow">
       <button class="std" id="playBtn">‖ 일시정지</button>
@@ -59,18 +90,20 @@
       <input type="range" id="phaseSlider" min="0" max="360" step="1" value="0">
       <span class="valbox" id="phaseVal">0°</span>
     </div>
-    <div class="hint" id="phaseHint" style="margin-top:0; display:none">
+    <div class="hint" id="phaseHint" style="display:none">
       전자기파는 시간에 따라 진동합니다. <b>위상(0°→360°)</b>은 한 주기 안의 '시각'입니다.
-      슬라이더를 움직이면 파동이 어느 순간에 있는지를 정지 화면으로 탐색할 수 있습니다.
+      슬라이더를 움직이면 파동이 어느 순간에 있는지 정지 화면으로 탐색할 수 있습니다.
       0°와 360°는 같은 순간(한 주기 후)이고, 180°는 빨강·파랑이 반전된 순간입니다.
     </div>
 
+    <!-- 공유: 현재 상태 -->
     <h2>현재 상태</h2>
     <div class="info" id="infoBox"></div>
 
     <div class="hint">
-      ① 입사파 ② 산란파(각 도선의 원통파 합) ③ 중첩. 세 칸은 같은 색 스케일이라
-      ①+②를 눈으로 더하면 ③이 됩니다. 색: <b>빨강(+E)</b> · 흰(0) · <span style="color:#2f6feb">파랑(−E)</span>.
+      ① 입사파 &nbsp;② 산란파(각 도선의 원통파 합) &nbsp;③ 중첩(입사+산란).
+      세 칸은 같은 색 스케일이라 ①+②를 눈으로 더하면 ③이 됩니다.
+      색: <b>빨강(+E)</b> · 흰(0) · <span style="color:#2f6feb">파랑(−E)</span>.
     </div>
   </div>
 </div>
