@@ -1,71 +1,16 @@
-:root {
-  --bg: #f7f7f8;
-  --panel-bg: #ffffff;
-  --border: #d8d8dc;
-  --text: #1c1c1f;
-  --muted: #6b6b72;
-  --accent: #2f6feb;
-}
 * { box-sizing: border-box; }
-html, body {
-  margin: 0; padding: 0; height: 100%;
-  font-family: "Pretendard", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
-  background: var(--bg); color: var(--text);
-}
+html, body { margin: 0; height: 100%; font-family: "Malgun Gothic", sans-serif; background: #f7f7f8; color: #1c1c1f; }
 #app { display: flex; height: 100vh; }
-#canvasWrap { flex: 1; position: relative; min-width: 0; }
-#canvas { display: block; width: 100%; height: 100%; background: #ffffff; }
-
-#panel {
-  width: 340px; flex-shrink: 0; background: var(--panel-bg);
-  border-left: 1px solid var(--border); overflow-y: auto;
-  padding: 16px; font-size: 13px;
-}
-h1 { font-size: 15px; margin: 0 0 6px; }
-.sub { font-size: 11px; color: var(--muted); margin-bottom: 8px; line-height: 1.5; }
-h2 { font-size: 12px; margin: 14px 0 8px; color: var(--muted);
-  border-bottom: 1px solid var(--border); padding-bottom: 4px; letter-spacing: .02em; }
-label { display: block; font-size: 12px; margin-bottom: 4px; }
-.row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
-.row input[type=range] { flex: 1; }
-.valbox { width: 96px; text-align: right; font-variant-numeric: tabular-nums; font-size: 12px; color: var(--muted); }
-
-/* 탭 바 */
-#tabBar { display: flex; gap: 6px; margin: 6px 0 0; }
-.tabBtn {
-  flex: 1; font-size: 12px; padding: 8px 6px;
-  border: 1px solid var(--border); border-radius: 6px;
-  background: #f0f0f3; cursor: pointer; transition: background .12s;
-}
-.tabBtn:hover { background: #e4e4e8; }
-.tabBtn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
-
-/* 탭 콘텐츠 */
-.tabPane { display: none; }
-.tabPane.active { display: block; }
-
-/* 무한 배열 자동 N 표시 */
-.autoN { font-size: 12px; color: var(--muted); margin: -4px 0 10px; }
-
-/* 편광 버튼 */
-.segbtns { display: flex; gap: 6px; margin-bottom: 6px; }
-.segbtns button {
-  flex: 1; font-size: 12px; padding: 7px 6px; border: 1px solid var(--border);
-  border-radius: 6px; background: #f0f0f3; cursor: pointer;
-}
-.segbtns button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
-
-.ctrlrow { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
-button.std {
-  font-size: 12px; padding: 6px 12px; border: 1px solid var(--border); border-radius: 6px;
-  background: #f0f0f3; cursor: pointer;
-}
-button.std:hover { background: #e4e4e8; }
-
-.info { font-size: 12px; line-height: 1.8; background: #f0f4ff; border: 1px solid #d6e0fb;
-  border-radius: 8px; padding: 10px 12px; }
-.info b { color: var(--accent); font-variant-numeric: tabular-nums; }
-.legend { font-size: 11px; color: var(--muted); line-height: 1.7; margin-top: 8px; }
-.hint { font-size: 11px; color: var(--muted); margin-top: 10px; line-height: 1.6; }
-#phaseWrap { opacity: .4; pointer-events: none; }
-#phaseWrap.on { opacity: 1; pointer-events: auto; }
+#stage { flex: 1; display: flex; flex-direction: column; min-width: 0; padding: 8px; gap: 6px; }
+.panel { position: relative; flex: 1; background: #fff; border: 1px solid #d8d8dc; border-radius: 6px; overflow: hidden; }
+.panel canvas { display: block; width: 100%; height: 100%; }
+.label { position: absolute; top: 4px; left: 8px; font-size: 12px; color: #333; background: rgba(255,255,255,.75); padding: 1px 6px; border-radius: 4px; z-index: 1; }
+#controls { width: 320px; flex-shrink: 0; background: #fff; border-left: 1px solid #d8d8dc; padding: 14px; overflow-y: auto; font-size: 13px; }
+h1 { font-size: 15px; margin: 0 0 10px; }
+.badge { font-size: 12px; padding: 5px 8px; border-radius: 6px; margin-bottom: 6px; background: #eef3ff; border: 1px solid #d6e0fb; }
+label { display: block; margin: 12px 0 4px; font-size: 12px; }
+input[type=range] { width: 100%; }
+.row { display: flex; gap: 8px; margin-top: 12px; }
+button { flex: 1; padding: 6px; border: 1px solid #d8d8dc; border-radius: 6px; background: #f0f0f3; cursor: pointer; }
+.info { margin-top: 12px; font-size: 12px; line-height: 1.6; background: #f6f6f8; border: 1px solid #e2e2e6; border-radius: 6px; padding: 8px; min-height: 32px; }
+.caption { margin-top: 12px; font-size: 11px; color: #6b6b72; line-height: 1.6; }
