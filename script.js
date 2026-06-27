@@ -8,8 +8,10 @@
   const TWO_PI = Math.PI * 2;
   const VMAX = 1.5;           // 색 포화 기준 [V/m]
   const A_RATIO_MAX = 0.30;   // 반지름 상한 = 간격의 30%
-  const N_MAX_INF = 80;       // 무한 배열 탭 N 상한
+  const N_MAX_INF = 80;       // 무한 배열 탭 표시 도선 수 상한
   const D_MIN_INF = 3;        // 무한 배열 탭 d 최솟값 [mm] (HTML min 속성과 일치)
+  const FLOQUET_M  = 50;      // Floquet 모드 수 (−M … +M)
+  const FLOQUET_YW = 0.090;   // 무한 배열 탭 반높이 고정값 [m] = 90 mm
 
   // =====================================================================
   // 1. 상태
@@ -111,6 +113,61 @@
   }
 
   // =====================================================================
+  // 3.5. Floquet 방법: 무한 주기 배열 (Tab 0)
+  //   κ_m = sqrt(k²−α_m²), α_m = 2πm/d, Im(κ_m) ≥ 0
+  // =====================================================================
+  function floquetZ(k, a_m, d_m) {
+    // Z = (2i/d) · Σ_{m=−M}^{M} (1/κ_m) · exp(i·κ_m·a)
+    const tpd = TWO_PI / d_m;
+    let sRe = 0, sIm = 0;
+    for (let m = -FLOQUET_M; m <= FLOQUET_M; m++) {
+      const al = m * tpd;
+      const kk = k * k - al * al;
+      let krRe, krIm;
+      if (kk >= 0) { krRe = Math.sqrt(kk); krIm = 0; }
+      else          { krRe = 0; krIm = Math.sqrt(-kk); }
+      const mag2 = krRe*krRe + krIm*krIm;
+      if (mag2 < 1e-30) continue;
+      const ikRe = krRe / mag2, ikIm = -krIm / mag2;   // 1/κ_m
+      const ex  = Math.exp(-krIm * a_m);
+      const eRe = ex * Math.cos(krRe * a_m);            // exp(i·κ·a)
+      const eIm = ex * Math.sin(krRe * a_m);
+      sRe += ikRe*eRe - ikIm*eIm;
+      sIm += ikRe*eIm + ikIm*eRe;
+    }
+    const f = 2 / d_m;                                  // ×(2i/d)
+    return { re: -f * sIm, im: f * sRe };
+  }
+
+  function floquetField(wx, wy, k, d_m) {
+    // (2i/d) · Σ_m (1/κ_m) · exp(i·α_m·wy) · exp(i·κ_m·|wx|)
+    // c 는 호출 측에서 곱함
+    const tpd = TWO_PI / d_m;
+    const absx = Math.abs(wx);
+    let sRe = 0, sIm = 0;
+    for (let m = -FLOQUET_M; m <= FLOQUET_M; m++) {
+      const al = m * tpd;
+      const kk = k * k - al * al;
+      let krRe, krIm;
+      if (kk >= 0) { krRe = Math.sqrt(kk); krIm = 0; }
+      else          { krRe = 0; krIm = Math.sqrt(-kk); }
+      const mag2 = krRe*krRe + krIm*krIm;
+      if (mag2 < 1e-30) continue;
+      const ikRe = krRe / mag2, ikIm = -krIm / mag2;
+      const cyRe = Math.cos(al * wy), cyIm = Math.sin(al * wy);
+      const ex2  = Math.exp(-krIm * absx);
+      const cxRe = ex2 * Math.cos(krRe * absx);
+      const cxIm = ex2 * Math.sin(krRe * absx);
+      const p1Re = ikRe*cyRe - ikIm*cyIm;
+      const p1Im = ikRe*cyIm + ikIm*cyRe;
+      sRe += p1Re*cxRe - p1Im*cxIm;
+      sIm += p1Re*cxIm + p1Im*cxRe;
+    }
+    const f = 2 / d_m;
+    return { re: -f * sIm, im: f * sRe };
+  }
+
+  // =====================================================================
   // 4. 솔버 출력 (recompute 결과 저장)
   // =====================================================================
   const solver = {
@@ -119,6 +176,7 @@
     gridW: 0, gridH: 0, Xw: 0, Yw: 0,
     incRe: null, incIm: null, scRe: null, scIm: null,
     tau: 1,
+    isFloquet: false, fCRe: 0, fCIm: 0,   // Tab 0 Floquet 계수
   };
 
   // =====================================================================
@@ -137,44 +195,25 @@
     let N, Xw, Yw;
 
     if (activeTab === 0) {
-      // 무한 배열: 창을 파장 기준으로 고정, N을 창 크기에 맞게 자동 결정
-      Yw = 3 * lam_m * aspect;
-      Xw = 3 * lam_m;
-      N = Math.max(4, Math.min(N_MAX_INF, Math.floor(2 * Yw / d_m)));
+      // 무한 배열: 90mm 고정 반높이 · 보이는 도선 수 = Yw/d (자동)
+      Yw = FLOQUET_YW;
+      Xw = Yw / aspect;
+      N = Math.min(N_MAX_INF, Math.max(4, Math.floor(2 * Yw / d_m)));
       ts.N = N;
       const el = document.getElementById("autoNVal");
       if (el) el.textContent = N;
     } else {
-      // 유한 배열: 배열 전체가 보이도록 창 자동 확대
+      // 유한 배열: 배열 전체가 보이도록 창 크기 설정 (파장 무관)
       N = ts.N;
       const arrHalf = (N - 1) * d_m / 2;
-      const YwMin = 3 * lam_m * aspect;
-      const YwArr = arrHalf * 1.25;
-      Yw = Math.max(YwMin, YwArr);
+      Yw = arrHalf * 1.25;
       Xw = Yw / aspect;
     }
 
-    // 도선 위치 (y=0 중심)
+    // 도선 위치 (y=0 중심) — Tab 0는 표시 전용, Tab 1은 MoM 입력
     const wiresY = new Float64Array(N);
     for (let n = 0; n < N; n++) wiresY[n] = (n - (N - 1) / 2) * d_m;
 
-    // MoM 행렬: Z_mn=H0(k·ρ_mn), Z_mm=H0(k·a), b_m=-1
-    const Z = new Float64Array(N * N * 2);
-    const b = new Float64Array(N * 2);
-    const Hself = hankel0(k * aEff_m);
-    for (let m = 0; m < N; m++) {
-      b[m * 2] = -1; b[m * 2 + 1] = 0;
-      for (let n = 0; n < N; n++) {
-        const h = (m === n) ? Hself : hankel0(k * Math.abs(wiresY[m] - wiresY[n]));
-        Z[(m * N + n) * 2] = h.re;
-        Z[(m * N + n) * 2 + 1] = h.im;
-      }
-    }
-    const c = solveComplex(N, Z, b);
-    const cRe = new Float64Array(N), cIm = new Float64Array(N);
-    for (let n = 0; n < N; n++) { cRe[n] = c[n * 2]; cIm[n] = c[n * 2 + 1]; }
-
-    // 격자 복소장 사전 계산 (A=1 기준)
     const gridW = layout.gridW;
     const gridH = Math.max(40, Math.round(gridW * aspect));
     const incRe = new Float32Array(gridW * gridH);
@@ -182,31 +221,74 @@
     const scRe  = new Float32Array(gridW * gridH);
     const scIm  = new Float32Array(gridW * gridH);
 
-    for (let gj = 0; gj < gridH; gj++) {
-      const wy = Yw - (gj + 0.5) / gridH * 2 * Yw;
-      for (let gi = 0; gi < gridW; gi++) {
-        const wx = -Xw + (gi + 0.5) / gridW * 2 * Xw;
-        const idx = gj * gridW + gi;
-        // 입사파 e^{ikx}  (왼→오른: Re[e^{ikx}·e^{-iωt}] = cos(kx−ωt))
-        const ph = k * wx;
-        incRe[idx] = Math.cos(ph);
-        incIm[idx] = Math.sin(ph);
-        // 산란파 Σ c_n H0(k ρ_n)
-        let sr = 0, si = 0;
-        for (let n = 0; n < N; n++) {
-          const dy = wy - wiresY[n];
-          let r = Math.sqrt(wx * wx + dy * dy);
-          if (r < aEff_m) r = aEff_m;
-          const x = k * r;
-          const jr = besselJ0(x), yi = besselY0(x);
-          sr += cRe[n] * jr - cIm[n] * yi;
-          si += cRe[n] * yi + cIm[n] * jr;
+    let cRe, cIm, fCRe = 0, fCIm = 0;
+
+    if (activeTab === 0) {
+      // ── Floquet 정확해: c = −1/Z, Z = (2i/d)·Σ(1/κ_m)·exp(iκ_m·a) ──
+      const Zf = floquetZ(k, aEff_m, d_m);
+      const Zden = Zf.re*Zf.re + Zf.im*Zf.im;
+      fCRe = -Zf.re / Zden;
+      fCIm =  Zf.im / Zden;
+
+      for (let gj = 0; gj < gridH; gj++) {
+        const wy = Yw - (gj + 0.5) / gridH * 2 * Yw;
+        for (let gi = 0; gi < gridW; gi++) {
+          const wx = -Xw + (gi + 0.5) / gridW * 2 * Xw;
+          const idx = gj * gridW + gi;
+          const ph = k * wx;
+          incRe[idx] = Math.cos(ph);
+          incIm[idx] = Math.sin(ph);
+          const fs = floquetField(wx, wy, k, d_m);
+          scRe[idx] = fCRe*fs.re - fCIm*fs.im;
+          scIm[idx] = fCRe*fs.im + fCIm*fs.re;
         }
-        scRe[idx] = sr; scIm[idx] = si;
+      }
+      cRe = new Float64Array(1); cIm = new Float64Array(1);
+    } else {
+      // ── 유한 배열 MoM: Z_mn=H0(k·ρ_mn), b_m=−1 ──
+      const ZM = new Float64Array(N * N * 2);
+      const b  = new Float64Array(N * 2);
+      const Hself = hankel0(k * aEff_m);
+      for (let m = 0; m < N; m++) {
+        b[m * 2] = -1; b[m * 2 + 1] = 0;
+        for (let n = 0; n < N; n++) {
+          const h = (m === n) ? Hself : hankel0(k * Math.abs(wiresY[m] - wiresY[n]));
+          ZM[(m * N + n) * 2] = h.re;
+          ZM[(m * N + n) * 2 + 1] = h.im;
+        }
+      }
+      const c = solveComplex(N, ZM, b);
+      cRe = new Float64Array(N); cIm = new Float64Array(N);
+      for (let n = 0; n < N; n++) { cRe[n] = c[n * 2]; cIm[n] = c[n * 2 + 1]; }
+
+      for (let gj = 0; gj < gridH; gj++) {
+        const wy = Yw - (gj + 0.5) / gridH * 2 * Yw;
+        for (let gi = 0; gi < gridW; gi++) {
+          const wx = -Xw + (gi + 0.5) / gridW * 2 * Xw;
+          const idx = gj * gridW + gi;
+          const ph = k * wx;
+          incRe[idx] = Math.cos(ph);
+          incIm[idx] = Math.sin(ph);
+          let sr = 0, si = 0;
+          for (let n = 0; n < N; n++) {
+            const dy = wy - wiresY[n];
+            let r = Math.sqrt(wx * wx + dy * dy);
+            if (r < aEff_m) r = aEff_m;
+            const x = k * r;
+            const jr = besselJ0(x), yi = besselY0(x);
+            sr += cRe[n] * jr - cIm[n] * yi;
+            si += cRe[n] * yi + cIm[n] * jr;
+          }
+          scRe[idx] = sr; scIm[idx] = si;
+        }
       }
     }
 
-    Object.assign(solver, { k, aEff_m, wiresY, cRe, cIm, gridW, gridH, Xw, Yw, incRe, incIm, scRe, scIm });
+    Object.assign(solver, {
+      k, aEff_m, wiresY, cRe, cIm,
+      gridW, gridH, Xw, Yw, incRe, incIm, scRe, scIm,
+      isFloquet: activeTab === 0, fCRe, fCIm,
+    });
 
     // E⊥wire 약화 계수 τ (정성적)
     const ka = k * aEff_m;
@@ -216,22 +298,30 @@
     updateInfo();
   }
 
-  // 전력 투과율 T = <|E_total|²> / |E_inc|²
-  //   측정점: 배열 오른쪽(투과영역) 고정 거리 · 중앙부 샘플
+  // 전력 투과율 T = |E_total|² / |E_inc|²
   let transmittance = 0;
   function computeTransmittance() {
+    if (solver.isFloquet) {
+      // Floquet 정확해: T = |1 + 2ic/(kd)|²
+      // 1 + 2ic/(kd) = (1 − 2·fCIm/kd) + i·(2·fCRe/kd)
+      const kd = solver.k * (tabState[0].d_mm / 1000);
+      const tRe = 1 - 2 * solver.fCIm / kd;
+      const tIm =     2 * solver.fCRe / kd;
+      transmittance = tRe*tRe + tIm*tIm;
+      return;
+    }
+    // 유한 배열: 오른쪽 고정 거리 · 중앙부 샘플
     const ts = tabState[activeTab];
     const k = solver.k;
     const wiresY = solver.wiresY;
     const N = wiresY.length;
     const d_m = ts.d_mm / 1000;
-    const xMeas = +Math.max(0.02, 1.5 * d_m);         // 배열 오른쪽 고정 거리
-    const yHalf = Math.min(0.25 * solver.Yw, 0.06);   // 중앙부 샘플 범위
+    const xMeas = +Math.max(0.02, 1.5 * d_m);
+    const yHalf = Math.min(0.25 * solver.Yw, 0.06);
     const samples = 41;
     let sum = 0;
     for (let s = 0; s < samples; s++) {
       const wy = -yHalf + (s / (samples - 1)) * 2 * yHalf;
-      // 입사파 복소 진폭 at xMeas: e^{ikx}
       let tr = Math.cos(k * xMeas), ti = Math.sin(k * xMeas);
       let sr = 0, si = 0;
       for (let n = 0; n < N; n++) {
@@ -387,7 +477,7 @@
     if (band === 2) {
       ctx.font = "11px sans-serif"; ctx.fillStyle = "#5a5a62";
       const caption = activeTab === 0
-        ? "오른쪽=차폐영역 · 왼쪽=반사 간섭무늬 · 도선이 창에 가득 참(무한 배열 근사)"
+        ? "오른쪽=차폐영역 · 왼쪽=반사 간섭무늬 · 도선은 위아래로 무한히 이어짐 (Floquet 정확해)"
         : "오른쪽=차폐영역 · 왼쪽=반사 간섭무늬(차폐 강할수록 정재파에 근접)";
       ctx.fillText(caption, bx + 120, by + bh - 10);
     }
