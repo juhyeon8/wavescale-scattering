@@ -28,9 +28,23 @@
     return Math.abs(Math.sin(n * Math.PI * yCells / aCells));
   }
 
+  function fitExponential(xs, ys) {
+    // ys = amp·exp(-kappa·x) 모델을 ln(y) 선형회귀로 적합
+    const n = xs.length;
+    let sx = 0, sy = 0, sxx = 0, sxy = 0;
+    for (let i = 0; i < n; i++) {
+      const lx = xs[i], ly = Math.log(ys[i]);
+      sx += lx; sy += ly; sxx += lx * lx; sxy += lx * ly;
+    }
+    const slope = (n * sxy - sx * sy) / (n * sxx - sx * sx);
+    const intercept = (sy - slope * sx) / n;
+    return { kappa: -slope, amp: Math.exp(intercept) };
+  }
+
   const API = {
     cutoffWavelength, regimeOf, attenuationConstant,
     propagatingModeCount, swrToReflection, modeExcitationStrength,
+    fitExponential,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = API;
   else { global.WaveSim = global.WaveSim || {}; global.WaveSim.physics = API; }

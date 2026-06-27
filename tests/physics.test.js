@@ -31,4 +31,12 @@ test("modeExcitationStrength: 중심선 n=1 배=1, 판 근처≈0", () => {
   approx(P.modeExcitationStrength(5, 10, 1), 1, 1e-9);     // y=a/2
   approx(P.modeExcitationStrength(0.01, 10, 1), 0, 1e-2);  // 판 근처
 });
+test("fitExponential: 합성 지수데이터 복원", () => {
+  const trueAmp = 2.5, trueKappa = 0.3;
+  const xs = [], ys = [];
+  for (let x = 0; x <= 20; x++) { xs.push(x); ys.push(trueAmp * Math.exp(-trueKappa * x)); }
+  const r = P.fitExponential(xs, ys);
+  approx(r.kappa, trueKappa, 1e-6, "kappa");
+  approx(r.amp, trueAmp, 1e-5, "amp");
+});
 done();
