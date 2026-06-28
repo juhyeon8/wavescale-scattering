@@ -73,7 +73,50 @@
     }
   }
 
-  const API = { divergingColor, paintField, drawGuide, drawGraph };
+  function drawMarkers(ctx, markerA, markerB, geom) {
+    var z = geom.zoom || 1, Ny = geom.Ny;
+    var sy = (Ny - 1 - geom.jMid) * z;
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "#e67e22";
+    ctx.beginPath(); ctx.arc(markerA * z, sy, 6, 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = "#2980b9";
+    ctx.beginPath(); ctx.arc(markerB * z, sy, 6, 0, Math.PI * 2); ctx.stroke();
+  }
+
+  function drawTimeGraph(ctx, ezA, ezB, head, count, period) {
+    var W = ctx.canvas.width, H = ctx.canvas.height;
+    ctx.clearRect(0, 0, W, H);
+    var BUF = ezA.length;
+    var show = Math.min(count, Math.round(3 * period), BUF);
+    if (show < 2) return;
+    // 자동 스케일: 표시 구간 내 최대값 기준
+    var mx = 1e-9;
+    for (var m = 0; m < show; m++) {
+      var mi = (head - show + m + BUF) % BUF;
+      var av = Math.abs(ezA[mi]); if (av > mx) mx = av;
+      var bv = Math.abs(ezB[mi]); if (bv > mx) mx = bv;
+    }
+    ctx.strokeStyle = "#e0e0e0"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, H / 2); ctx.lineTo(W, H / 2); ctx.stroke();
+    ctx.strokeStyle = "#e67e22"; ctx.lineWidth = 1.5; ctx.beginPath();
+    for (var k = 0; k < show; k++) {
+      var idx = (head - show + k + BUF) % BUF;
+      var x = k / (show - 1) * W;
+      var y = H / 2 - (ezA[idx] / mx) * (H / 2 - 3);
+      if (k === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.strokeStyle = "#2980b9"; ctx.lineWidth = 1.5; ctx.beginPath();
+    for (var k2 = 0; k2 < show; k2++) {
+      var idx2 = (head - show + k2 + BUF) % BUF;
+      var x2 = k2 / (show - 1) * W;
+      var y2 = H / 2 - (ezB[idx2] / mx) * (H / 2 - 3);
+      if (k2 === 0) ctx.moveTo(x2, y2); else ctx.lineTo(x2, y2);
+    }
+    ctx.stroke();
+  }
+
+  const API = { divergingColor, paintField, drawGuide, drawGraph, drawMarkers, drawTimeGraph };
   if (typeof module !== "undefined" && module.exports) module.exports = API;
   else { global.WaveSim = global.WaveSim || {}; global.WaveSim.render = API; }
 })(typeof globalThis !== "undefined" ? globalThis : this);

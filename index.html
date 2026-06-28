@@ -12,6 +12,7 @@
     <div class="panel"><div class="label" id="label2">② 산란 Re{E_sc}</div><canvas id="cv2"></canvas></div>
     <div class="panel"><div class="label">③ 중첩 (전체장)</div><canvas id="cv3"></canvas></div>
     <div class="panel"><div class="label">|E| vs x (도파관 중심선)</div><canvas id="cvGraph"></canvas></div>
+    <div class="panel panel-time" id="timePanel"><div class="label">E_z(t) — 마커 A(주황)·B(파랑) 시간 파형 [제자리진동=동위상, 진행파=위상차]</div><canvas id="cvTime"></canvas></div>
   </div>
   <aside id="controls">
     <h1>도파관 FDTD</h1>
@@ -28,9 +29,10 @@
       <button id="resetBtn">↻ 리셋</button>
     </div>
     <label>속도(스텝/프레임) <span id="speedVal"></span></label>
-    <input type="range" id="speed" min="1" max="8" step="1" value="3">
+    <input type="range" id="speed" min="1" max="8" step="1" value="2">
     <div class="info" id="kappaInfo"></div>
     <div class="info" id="reflInfo"></div>
+    <div class="info" id="phaseInfo"></div>
     <p class="caption" id="modeCaption"></p>
   </aside>
 </div>
