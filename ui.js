@@ -26,7 +26,32 @@
     return { i: i, j: j };
   }
 
-  const API = { panel1Label, regimeBadge, cutoffBadge, clampDragToCell };
+  // 마커 A·B 배치: internal → 소스 같은 쪽, aperture → 입구 기준 내부 고정
+  function computeMarkers(regime, sourceI, aCells, plateColStart, plateColEnd, mouthI) {
+    var markerA, markerB;
+    if (regime === "internal") {
+      // 오른쪽 우선 배치
+      markerA = sourceI + Math.max(10, Math.round(0.5 * aCells));
+      markerB = sourceI + Math.max(20, Math.round(1.2 * aCells));
+      markerA = Math.min(markerA, plateColEnd - 5);
+      markerB = Math.min(markerB, plateColEnd - 5);
+      // 오른쪽 공간 부족 → 왼쪽 폴백(같은 쪽 유지)
+      if (markerB - markerA < 6) {
+        markerA = sourceI - Math.max(10, Math.round(0.5 * aCells));
+        markerB = sourceI - Math.max(20, Math.round(1.2 * aCells));
+        markerA = Math.max(markerA, plateColStart + 5);
+        markerB = Math.max(markerB, plateColStart + 5);
+      }
+    } else {
+      // aperture: 입구로부터 내부 고정 위치
+      var base = mouthI + Math.round(aCells * 0.5);
+      markerA = Math.min(base, plateColEnd - 20);
+      markerB = Math.min(markerA + Math.round(aCells * 0.7), plateColEnd - 5);
+    }
+    return { markerA: markerA, markerB: markerB };
+  }
+
+  const API = { panel1Label, regimeBadge, cutoffBadge, clampDragToCell, computeMarkers };
   if (typeof module !== "undefined" && module.exports) module.exports = API;
   else { global.WaveSim = global.WaveSim || {}; global.WaveSim.ui = API; }
 })(typeof globalThis !== "undefined" ? globalThis : this);

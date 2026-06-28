@@ -11,7 +11,7 @@
               plateColStart: mouthI, plateColEnd: Nx - 1 - pml,
               courant: 0.5, pml: pml, wallThick: 2 };
   var sim = new NS.Sim(cfg);
-  sim.setLambda(28); sim.setSourceCell(Math.round(Nx * 0.12), sim.jMid);
+  sim.setLambda(28); sim.setSourceCell(mouthI - 15, sim.jMid);
 
   var cv1 = document.getElementById("cv1"), cv2 = document.getElementById("cv2"),
       cv3 = document.getElementById("cv3"), cvG = document.getElementById("cvGraph"),
@@ -35,9 +35,9 @@
 
   var markerA, markerB;
   function updateMarkers() {
-    var lo = cfg.plateColStart + 10, hi = sim.plateColEnd - 10;
-    markerA = Math.round(lo + (hi - lo) * 0.25);
-    markerB = Math.round(lo + (hi - lo) * 0.65);
+    var m = NS.ui.computeMarkers(sim.regime(), sim.sourceI, sim.aCells,
+      cfg.plateColStart, sim.plateColEnd, mouthI);
+    markerA = m.markerA; markerB = m.markerB;
   }
   updateMarkers();
 
@@ -46,9 +46,17 @@
   var ezBbuf = new Float32Array(BUF);
   var bufHead = 0;
 
+  // 위상차: 정확히 주기 경계에서만 저장(부분 주기 DFT 앨리어싱 방지)
+  var lastDph = null;       // null = 아직 유효한 측정 없음
+  var phasePeriods = 0;     // 마지막 파라미터 변경 이후 완료된 주기 수
+
   sim.beginMeasure();
 
-  function onParamChange() { sim.beginMeasure(); measCount = 0; period = sim.periodSteps(); }
+  function onParamChange() {
+    updateMarkers();
+    lastDph = null; phasePeriods = 0;
+    sim.beginMeasure(); measCount = 0; period = sim.periodSteps();
+  }
 
   function syncLabels() {
     var r = sim.regime(), info = sim.cutoffInfo();
@@ -108,21 +116,11 @@
       reflEl.textContent = "";
     }
 
-    // 마커 A-B 위상차
+    // 마커 A-B 위상차: 정확한 주기 경계에서 저장된 값 표시
     var phaseEl = document.getElementById("phaseInfo");
-    // 위상차는 소스가 도파관 내부(internal)일 때만 산란장 기준 측정이 의미 있음
-    if (phaseEl && r === "internal" && info.evanescent && bufHead > period * 2) {
-      var ct = sim.total.phasorComplex(), ci = sim.incident.phasorComplex();
-      var kA = markerA * Ny + sim.jMid, kB = markerB * Ny + sim.jMid;
-      var reA = ct.factor * ct.re[kA] - ci.factor * ci.re[kA];
-      var imA = ct.factor * ct.im[kA] - ci.factor * ci.im[kA];
-      var reB = ct.factor * ct.re[kB] - ci.factor * ci.re[kB];
-      var imB = ct.factor * ct.im[kB] - ci.factor * ci.im[kB];
-      var dph = (Math.atan2(imB, reB) - Math.atan2(imA, reA)) * 180 / Math.PI;
-      while (dph > 180) dph -= 360;
-      while (dph < -180) dph += 360;
-      phaseEl.textContent = "A-B 위상차: " + dph.toFixed(1) +
-        "° — " + (Math.abs(dph) < 15 ? "제자리 진동(차단)" : "진행파");
+    if (phaseEl && lastDph !== null) {
+      phaseEl.textContent = "A-B 위상차: " + lastDph.toFixed(1) +
+        "° — " + (Math.abs(lastDph) < 20 ? "제자리 진동(차단)" : "진행파");
     } else if (phaseEl) {
       phaseEl.textContent = "";
     }
@@ -163,6 +161,21 @@
         bufHead++;
         if (++measCount >= period) {
           graphRow = sim.centerlineAmp();
+          phasePeriods++;
+          window._dbgBufHead = bufHead;
+          window._dbgPhasePeriods = phasePeriods;
+          // 위상: 정확히 완료된 주기에서만 측정(앨리어싱 제로)
+          // 과도기 감쇠 대기(λ=56 기준 4 주기 ≈ 3.7 sec)
+          if (phasePeriods >= 2) {
+            var cpx = sim.total.phasorComplex();
+            var kA = markerA * Ny + sim.jMid, kB = markerB * Ny + sim.jMid;
+            var reA = cpx.factor * cpx.re[kA], imA = cpx.factor * cpx.im[kA];
+            var reB = cpx.factor * cpx.re[kB], imB = cpx.factor * cpx.im[kB];
+            var d = (Math.atan2(imB, reB) - Math.atan2(imA, reA)) * 180 / Math.PI;
+            while (d > 180) d -= 360; while (d < -180) d += 360;
+            lastDph = d;
+            window._dbgLastDph = d;
+          }
           sim.beginMeasure(); measCount = 0;
         }
       }
@@ -233,5 +246,9 @@
   });
 
   document.getElementById("speedVal").textContent = speed;
+  // 디버그용 전역 노출
+  window._dbgBufHead = 0;
+  window._dbgPhasePeriods = 0;
+  window._dbgLastDph = null;
   requestAnimationFrame(frame);
 })();
