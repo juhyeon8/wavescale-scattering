@@ -295,6 +295,19 @@ console.table(
   })
 );
 
+console.log('\n검증 5b 세부 (θ별 |F(φ=0)| vs |F(φ=45°)| 상대 편차):');
+console.table(
+  test5bPerTheta.map(function (r) {
+    return {
+      'θ(deg)': r.thetaDeg,
+      '|F(φ=0)|': r.mag0,
+      '|F(φ=45°)|': r.mag45,
+      '상대편차': fmtExp(r.dev, 6)
+    };
+  })
+);
+console.log('검증 5b 최댓값: ' + fmtExp(test5bMaxDev, 6));
+
 var allPass = results.every(function (r) {
   return r.pass;
 });
