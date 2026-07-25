@@ -1,0 +1,85 @@
+{
+  "params": {
+    "a": 1,
+    "alphaTotal": 1,
+    "E0": 1,
+    "timeConvention": "e^{-i*omega*t}",
+    "xRange": [
+      0.0063,
+      2
+    ],
+    "sweepRange": {
+      "lambdaOverA": [
+        3.141592653589793,
+        1000
+      ],
+      "n": 60
+    },
+    "generatedAt": "2026-07-25T03:22:13.791Z"
+  },
+  "checks": [
+    {
+      "id": "1",
+      "item": "형상 인자 수렴 (절대오차, θ 181점)",
+      "measured": "2.6901e-3",
+      "threshold": "0.01 (절대)",
+      "pass": true
+    },
+    {
+      "id": "2",
+      "item": "전방 산란 불변 (θ=0, F/N=1)",
+      "measured": "0.0000e+0",
+      "threshold": "1e-12",
+      "pass": true
+    },
+    {
+      "id": "3",
+      "item": "레일리 극한 — 기울기 (x<0.05, 22점 최소제곱)",
+      "measured": "3.999619",
+      "threshold": "|기울기-4| < 0.01",
+      "pass": true
+    },
+    {
+      "id": "3'",
+      "item": "레일리 극한 — 계수 (21cm 프리셋, G→1.000)",
+      "measured": "-3.601563e-12  [G=1.000000000]",
+      "threshold": "|G-1| < 1e-3",
+      "pass": true
+    },
+    {
+      "id": "4",
+      "item": "N 비의존성 (x=2.0, n_d=20/28/40/56)",
+      "measured": "0.2376%",
+      "threshold": "0.5%",
+      "pass": true
+    },
+    {
+      "id": "5a",
+      "item": "격자 이방성 — 2D 대조 (x=2.0)",
+      "measured": "0.0280%",
+      "threshold": "0.5%",
+      "pass": true
+    },
+    {
+      "id": "5b",
+      "item": "격자 이방성 — φ=0 vs φ=45° 직접 진단 (x=2.0, θ∈{60,90,120}°)",
+      "measured": "0.1268%",
+      "threshold": "0.5%",
+      "pass": true
+    },
+    {
+      "id": "6",
+      "item": "격자 중심 확인 (Im(F)/N ≈ 0)",
+      "measured": "4.7100e-16",
+      "threshold": "1e-12",
+      "pass": true
+    },
+    {
+      "id": "nd",
+      "item": "sweep 전 구간 n_d 상수성 (계단 방지 회귀 체크)",
+      "measured": "상수(20)",
+      "threshold": "상수(20)",
+      "pass": true
+    }
+  ]
+}
