@@ -15,7 +15,7 @@
       ],
       "n": 60
     },
-    "generatedAt": "2026-07-26T07:10:03.338Z"
+    "generatedAt": "2026-07-26T08:13:53.505Z"
   },
   "checks": [
     {
@@ -98,14 +98,14 @@
     {
       "id": "9a",
       "item": "y 대칭 최적화 (scatteredFieldXZPlane vs 브루트포스)",
-      "measured": "3.9519e-15",
+      "measured": "3.3766e-15",
       "threshold": "1e-10",
       "pass": true
     },
     {
       "id": "9b",
       "item": "x 거울 관계 (E_x 짝함수 / E_z 홀함수)",
-      "measured": "3.7543e-15",
+      "measured": "2.3713e-15",
       "threshold": "1e-10",
       "pass": true
     },

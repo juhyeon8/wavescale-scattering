@@ -298,9 +298,17 @@ var RGD = (function () {
   // 거리 차수와 k 차수가 1:1로 맞물리므로("1/R³↔k⁰, 1/R²↔k¹, 1/R↔k²"),
   // "파장이 길어질수록 먼 곳까지 가는 성분부터 순서대로 사라진다"가 그대로 읽힌다.
   //
-  // 반환: { radiation, induction, static } — 각각 {ex, ey, ez}, 각 성분 {re, im}.
-  // 세 항을 합쳐 전체 장을 만드는 것은 호출자의 책임이다(항별 표시가 UI 요구사항).
-  function dipoleFieldKernel(dx, dy, dz, k) {
+  // 커널의 수학은 여기 한 곳에만 둔다. out[18] 에 다음 순서로 써 넣는다:
+  //   [0..5]   radiation ex.re, ex.im, ey.re, ey.im, ez.re, ez.im
+  //   [6..11]  induction 동일 순서
+  //   [12..17] static    동일 순서
+  //
+  // 객체를 만들지 않는 형태로 분리해 둔 이유: 화면 렌더링은 호출이 300만 회에
+  // 이르는데, 구조체를 반환하면 호출마다 13개씩 객체가 할당되어 GC가 지배적인
+  // 비용이 된다(실측 824ms → 할당 제거 후 크게 감소). 구조체 형태가 필요한
+  // 호출자는 아래 dipoleFieldKernel 이 이 결과를 담아 준다 — 수학이 두 벌로
+  // 갈라지지 않게 하기 위함이다.
+  function dipoleFieldKernelInto(dx, dy, dz, k, out) {
     var R2 = dx * dx + dy * dy + dz * dz;
     var R = Math.sqrt(R2);
     var R3 = R2 * R;
@@ -339,21 +347,36 @@ var RGD = (function () {
     var staRe = cosKR / R3;
     var staIm = sinKR / R3;
 
+    out[0] = v1x * radRe; out[1] = v1x * radIm;
+    out[2] = v1y * radRe; out[3] = v1y * radIm;
+    out[4] = v1z * radRe; out[5] = v1z * radIm;
+
+    out[6] = v2x * indRe; out[7] = v2x * indIm;
+    out[8] = v2y * indRe; out[9] = v2y * indIm;
+    out[10] = v2z * indRe; out[11] = v2z * indIm;
+
+    out[12] = v2x * staRe; out[13] = v2x * staIm;
+    out[14] = v2y * staRe; out[15] = v2y * staIm;
+    out[16] = v2z * staRe; out[17] = v2z * staIm;
+
+    return out;
+  }
+
+  // 구조체 형태 — 검증(verify.js 항목 8)과 임의 호출자를 위한 표면.
+  // 수학은 dipoleFieldKernelInto 한 곳에만 있다.
+  // 반환: { radiation, induction, static } — 각각 {ex, ey, ez}, 각 성분 {re, im}.
+  // 세 항을 합쳐 전체 장을 만드는 것은 호출자의 책임이다(항별 표시가 UI 요구사항).
+  function dipoleFieldKernel(dx, dy, dz, k) {
+    var o = dipoleFieldKernelInto(dx, dy, dz, k, new Float64Array(18));
     return {
       radiation: {
-        ex: { re: v1x * radRe, im: v1x * radIm },
-        ey: { re: v1y * radRe, im: v1y * radIm },
-        ez: { re: v1z * radRe, im: v1z * radIm }
+        ex: { re: o[0], im: o[1] }, ey: { re: o[2], im: o[3] }, ez: { re: o[4], im: o[5] }
       },
       induction: {
-        ex: { re: v2x * indRe, im: v2x * indIm },
-        ey: { re: v2y * indRe, im: v2y * indIm },
-        ez: { re: v2z * indRe, im: v2z * indIm }
+        ex: { re: o[6], im: o[7] }, ey: { re: o[8], im: o[9] }, ez: { re: o[10], im: o[11] }
       },
       static: {
-        ex: { re: v2x * staRe, im: v2x * staIm },
-        ey: { re: v2y * staRe, im: v2y * staIm },
-        ez: { re: v2z * staRe, im: v2z * staIm }
+        ex: { re: o[12], im: o[13] }, ey: { re: o[14], im: o[15] }, ez: { re: o[16], im: o[17] }
       }
     };
   }
@@ -431,64 +454,90 @@ var RGD = (function () {
   //   [전체]/[복사]/[유도]/[정전] 토글이 재계산 없이 표시만 바꾸는 일이 된다.
   //   opts.term('full'|'radiation'|'induction'|'static')을 주면 그 항의 합을
   //   최상위 {ex, ez}로도 함께 실어 준다(단일 지점 조회 편의용).
+  var kernelScratch = new Float64Array(18);
+
+  // y>0 쌍극자의 좌표와 구동 위상 exp(i k z_j)를 미리 펼쳐 둔다.
+  //   [x_j, y_j, z_j, cos(k z_j), sin(k z_j)] × M
+  // 구동 위상은 (grid, k)에만 의존하는데 화면 렌더링은 같은 (grid, k)로
+  // 관측점만 바꿔 가며 수천 번 호출되므로, 캐시하지 않으면 cos/sin을
+  // 수백만 번 중복 계산하게 된다. y<=0 걸러내기도 여기서 한 번에 끝난다.
+  //
+  // grid 객체 동일성으로 무효화한다 — buildDipoleGrid는 매번 새 객체를
+  // 돌려주고 이 코드베이스에서 grid를 제자리 수정하는 곳은 없다.
+  var driveGrid = null;
+  var driveK = NaN;
+  var driveArr = null;
+  var driveCount = 0;
+
+  function driveTable(grid, k) {
+    if (grid === driveGrid && k === driveK) return driveArr;
+    var points = grid.points;
+    var m = 0;
+    var i;
+    for (i = 0; i < points.length; i++) if (points[i].y > 0) m++;
+    var arr = new Float64Array(m * 5);
+    var o = 0;
+    for (i = 0; i < points.length; i++) {
+      var p = points[i];
+      if (p.y <= 0) continue;
+      arr[o] = p.x; arr[o + 1] = p.y; arr[o + 2] = p.z;
+      arr[o + 3] = Math.cos(k * p.z);
+      arr[o + 4] = Math.sin(k * p.z);
+      o += 5;
+    }
+    driveGrid = grid; driveK = k; driveArr = arr; driveCount = m;
+    return arr;
+  }
+
   function scatteredFieldXZPlane(xObs, zObs, grid, k, alphaTotal, opts) {
     opts = opts || {};
-    var points = grid.points;
-    var N = grid.N;
-    var alpha = alphaTotal / N;
+    var alpha = alphaTotal / grid.N;
 
     var radExRe = 0, radExIm = 0, radEzRe = 0, radEzIm = 0;
     var indExRe = 0, indExIm = 0, indEzRe = 0, indEzIm = 0;
     var staExRe = 0, staExIm = 0, staEzRe = 0, staEzIm = 0;
 
-    for (var j = 0; j < points.length; j++) {
-      var p = points[j];
-      if (p.y <= 0) continue; // y>0 절반만 순회하고 마지막에 2배
+    // 할당 없는 커널 경로를 쓴다(모듈 수준 스크래치 재사용) — 화면 렌더링은
+    // 호출이 300만 회에 이르므로 호출당 객체 할당이 지배적인 비용이 된다.
+    var o = kernelScratch;
+    var d = driveTable(grid, k); // y>0 쌍극자 + 구동 위상 (미리 계산됨)
+    var m = driveCount;
 
-      var dx = xObs - p.x;
-      var dy = -p.y;
-      var dz = zObs - p.z;
+    // α는 모든 쌍극자에 공통인 상수배이므로 루프 안에서 곱하지 않고
+    // 마지막에 한 번만 곱한다(y 대칭의 2배도 함께).
+    for (var j = 0; j < m; j++) {
+      var b = j * 5;
+      dipoleFieldKernelInto(xObs - d[b], -d[b + 1], zObs - d[b + 2], k, o);
 
-      var kern = dipoleFieldKernel(dx, dy, dz, k);
+      var da = d[b + 3]; // cos(k z_j)
+      var db = d[b + 4]; // sin(k z_j)
 
-      var da = alpha * Math.cos(k * p.z);
-      var db = alpha * Math.sin(k * p.z);
+      // ex 는 인덱스 0/1(복사), 6/7(유도), 12/13(정전)
+      // ez 는 인덱스 4/5(복사), 10/11(유도), 16/17(정전)
+      radExRe += o[0] * da - o[1] * db;  radExIm += o[0] * db + o[1] * da;
+      radEzRe += o[4] * da - o[5] * db;  radEzIm += o[4] * db + o[5] * da;
 
-      var v;
-      v = kern.radiation.ex;
-      radExRe += v.re * da - v.im * db;
-      radExIm += v.re * db + v.im * da;
-      v = kern.radiation.ez;
-      radEzRe += v.re * da - v.im * db;
-      radEzIm += v.re * db + v.im * da;
+      indExRe += o[6] * da - o[7] * db;  indExIm += o[6] * db + o[7] * da;
+      indEzRe += o[10] * da - o[11] * db; indEzIm += o[10] * db + o[11] * da;
 
-      v = kern.induction.ex;
-      indExRe += v.re * da - v.im * db;
-      indExIm += v.re * db + v.im * da;
-      v = kern.induction.ez;
-      indEzRe += v.re * da - v.im * db;
-      indEzIm += v.re * db + v.im * da;
-
-      v = kern.static.ex;
-      staExRe += v.re * da - v.im * db;
-      staExIm += v.re * db + v.im * da;
-      v = kern.static.ez;
-      staEzRe += v.re * da - v.im * db;
-      staEzIm += v.re * db + v.im * da;
+      staExRe += o[12] * da - o[13] * db; staExIm += o[12] * db + o[13] * da;
+      staEzRe += o[16] * da - o[17] * db; staEzIm += o[16] * db + o[17] * da;
     }
+
+    var s = 2 * alpha; // y 대칭 2배 × 개별 분극률 α = alphaTotal/N
 
     var result = {
       radiation: {
-        ex: { re: 2 * radExRe, im: 2 * radExIm },
-        ez: { re: 2 * radEzRe, im: 2 * radEzIm }
+        ex: { re: s * radExRe, im: s * radExIm },
+        ez: { re: s * radEzRe, im: s * radEzIm }
       },
       induction: {
-        ex: { re: 2 * indExRe, im: 2 * indExIm },
-        ez: { re: 2 * indEzRe, im: 2 * indEzIm }
+        ex: { re: s * indExRe, im: s * indExIm },
+        ez: { re: s * indEzRe, im: s * indEzIm }
       },
       static: {
-        ex: { re: 2 * staExRe, im: 2 * staExIm },
-        ez: { re: 2 * staEzRe, im: 2 * staEzIm }
+        ex: { re: s * staExRe, im: s * staExIm },
+        ez: { re: s * staEzRe, im: s * staEzIm }
       }
     };
 

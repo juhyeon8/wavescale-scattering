@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>RGD 소입자 산란 — 장 분포와 기제</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="controls">
+  <div class="ctl-group">
+    <label for="lambdaSlider">λ/a</label>
+    <input type="range" id="lambdaSlider" min="0" max="1000" value="0">
+    <span class="readout" id="lambdaReadout">λ/a = 3.1416<span class="sep">·</span>x = 2.0000</span>
+  </div>
+
+  <div class="ctl-group presets">
+    <span class="ctl-label">프리셋</span>
+    <button type="button" data-lambda="2.1e6">21cm 전파</button>
+    <button type="button" data-lambda="5">가시광선 500nm</button>
+    <button type="button" data-lambda="12">경계 12</button>
+    <button type="button" data-lambda="17">경계 17</button>
+    <button type="button" data-lambda="40">경계 40</button>
+  </div>
+
+  <div class="ctl-group">
+    <span class="ctl-label">(B) 표시 항</span>
+    <select id="termSelect">
+      <option value="full">전체</option>
+      <option value="radiation">복사</option>
+      <option value="induction">유도</option>
+      <option value="static">정전</option>
+    </select>
+    <span class="ctl-label">배율</span>
+    <select id="scaleSelect">
+      <option value="auto">자동</option>
+      <option value="1">×1</option>
+      <option value="10">×10</option>
+      <option value="100">×100</option>
+      <option value="1000">×1000</option>
+    </select>
+  </div>
+
+  <span class="status" id="status"></span>
+</div>
+
+<div class="panels">
+
+  <!-- ================= 1행 — 공간 장 분포 (xz 평면 단면) =================
+       세 패널의 세로 구조가 동일해야 이미지 영역이 픽셀 단위로 같아진다:
+         제목 + 이미지 영역(flex:1) + 캡션(고정 높이)
+       지표·배지·ⓘ 설명은 전부 이미지 영역 안의 오버레이로 띄운다. -->
+
+  <section class="panel">
+    <h2>(A) 입사파<span class="sub">Re(E_x), t=0</span>
+      <span class="tools"><button type="button" class="tool info-btn" data-info="infoA">ⓘ</button></span>
+    </h2>
+    <div class="body">
+      <canvas id="canvasA"></canvas>
+      <div class="info-overlay" id="infoA" hidden>
+        <h3>(A) 입사파</h3>
+        <p>+z 방향으로 진행하는 x축 편광 평면파의 t=0 순간 스냅샷 <code>Re(E_x) = cos(kz)</code>입니다.
+        색 스케일은 진폭 1로 고정되며 (B)(C)와 공유합니다.</p>
+        <p>아래쪽 양방향 화살표가 파장 눈금입니다. 파장이 표시 범위(10a)보다 길면
+        화살표가 패널 밖으로 잘려 나가는데, <strong>그 잘림 자체가 "파장이 이 화면보다 크다"는
+        메시지</strong>입니다. 이때 화면이 거의 단색으로 보이는 것은 고장이 아니라
+        준정전기 영역의 정확한 결과입니다.</p>
+      </div>
+    </div>
+    <p class="caption" id="captionA"></p>
+  </section>
+
+  <section class="panel">
+    <h2>(B) 산란파<span class="sub" id="termLabel">전체</span>
+      <span class="tools">
+        <button type="button" class="tool" id="metricsBtn">수치</button>
+        <button type="button" class="tool info-btn" data-info="infoB">ⓘ</button>
+      </span>
+    </h2>
+    <div class="body">
+      <canvas id="canvasB"></canvas>
+      <div class="badge" id="scaleBadge">×1</div>
+      <div class="zone-badge" id="zoneBadge" hidden></div>
+      <div class="metrics-bar" id="metricsBar" hidden></div>
+      <div class="info-overlay" id="infoB" hidden>
+        <h3>(B) 산란파 — 세 항의 구성</h3>
+        <p>완전한 쌍극자 장(Jackson 9.18)을 세 항으로 나눈 것입니다. 거리 차수와 k 차수가
+        1:1로 맞물리며, k 차수는 쌍극자 모멘트의 시간 미분 차수이기도 합니다:</p>
+        <table>
+          <tr><th>항</th><th>거리</th><th>k</th><th>λ 의존</th><th>모멘트</th></tr>
+          <tr><td>복사</td><td>1/R</td><td>k²</td><td>λ⁻²</td><td>p̈ (가속도)</td></tr>
+          <tr><td>유도</td><td>1/R²</td><td>k¹</td><td>λ⁻¹</td><td>ṗ (전류)</td></tr>
+          <tr><td>정전</td><td>1/R³</td><td>k⁰</td><td>무관</td><td>p</td></tr>
+        </table>
+        <p>이 분해는 <strong>관측점 조건(kR ≪ 1)</strong>에 관한 것으로, 논문 Ⅳ.1의
+        준정전기(파원 간 위상차 조건 kd ≪ 1)나 Ⅲ.2의 위상 균일성(ka ≪ 1, 패널 D)과는
+        적용 대상이 다릅니다. 다만 셋 모두 "관련 길이 × k ≪ 1"이라는 같은 무차원 조건입니다.</p>
+        <h3>세 값의 교차</h3>
+        <p>점쌍극자라면 +z축에서 R̂·p̂ = 0 이라 인접한 두 비가 둘 다 정확히 kR 이 되어
+        λ/a = 4π ≈ 12.566 에서 셋이 동시에 만나야 합니다. 실제 격자 합에서는
+        <strong>두 번으로 갈라져</strong> λ/a = 11.182(정전=유도)와 13.345(유도=복사)에서
+        차례로 교차하며, 두 교차가 점쌍극자 값을 양쪽에서 감쌉니다.</p>
+        <p>이 위치는 기준점(r=2a) 선택에 좌우되므로 <strong>물리적 경계가 아닙니다.</strong>
+        비의 절댓값도 규격화에 의존합니다(α_total = 1 은 a³ 과 같으며 완전도체 구의 최대
+        분극률에 해당) — 의미 있는 것은 값 자체가 아니라 정전 비가 λ에 무관하다는 사실입니다.</p>
+        <p class="foot">덧: 점쌍극자 대비 편차는 거리 차수 순서를 따르지 않습니다
+        (λ/a=12.5에서 정전 +0.5%, 유도 −10.6%, 복사 −5.1%). 정전·유도의 각도 인자
+        [3R̂(R̂·p̂) − p̂]와 복사의 [p̂ − R̂(R̂·p̂)]가 달라 축 바깥 기여의 상쇄 정도가
+        거리 차수만으로 정해지지 않기 때문입니다.</p>
+      </div>
+    </div>
+    <p class="caption">멀리까지 나가는 것은 복사장뿐이다. 정전장과 유도장은 한 주기 안에
+    나갔다 되돌아오는 저장 에너지여서 알짜 전력을 실어 나르지 않는다.</p>
+  </section>
+
+  <section class="panel">
+    <h2>(C) 중첩 결과<span class="sub">입사파 + 산란파</span>
+      <span class="tools"><button type="button" class="tool info-btn" data-info="infoC">ⓘ</button></span>
+    </h2>
+    <div class="body">
+      <canvas id="canvasC"></canvas>
+      <div class="info-overlay" id="infoC" hidden>
+        <h3>(C) 중첩 결과</h3>
+        <p>입사파와 산란파를 <strong>배율 없이 원본값으로</strong> 더한 것입니다. (B)의 표시
+        배율과 항별 토글은 여기에 적용되지 않습니다 — 배율이 걸린 산란파를 더하면 물리적으로
+        무의미해지기 때문입니다.</p>
+        <p>논문 Ⅲ.1의 도체 막대에서는 경계조건 E_tan = 0 이 |E_산란| ≈ |E_입사| 를 강제하지만,
+        Ⅲ.2의 작은 입자에서는 그것을 강제하는 조건이 없어 산란파가 훨씬 약합니다. 그래서 하나는
+        그림자를 만들고 다른 하나는 그냥 통과합니다.</p>
+        <p>세 항의 정량적 비교는 (B) 패널의 "수치" 버튼에 있습니다.</p>
+      </div>
+    </div>
+    <p class="caption">파장이 길어지면 물체는 여전히 반응하지만, 그 반응이 밖으로
+    전파되지 않아 전체 장이 입사파와 거의 같아진다.</p>
+  </section>
+
+  <!-- ================= 2행 — 기제 ================= -->
+
+  <section class="panel square">
+    <h2>(D) 내부 위상 지도</h2>
+    <div class="body"><p class="todo">다음 단계에서 구현</p></div>
+  </section>
+
+  <section class="panel square">
+    <h2>(E) 위상자 합</h2>
+    <div class="body"><p class="todo">다음 단계에서 구현</p></div>
+  </section>
+
+  <section class="panel square">
+    <h2>(F) 산란 패턴</h2>
+    <div class="body"><p class="todo">다음 단계에서 구현</p></div>
+  </section>
+
+</div>
+
+<script src="physics.js"></script>
+<script src="script.js"></script>
+</body>
+</html>
