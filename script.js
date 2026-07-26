@@ -54,7 +54,14 @@
   // 상태
   // ---------------------------------------------------------------------
 
+  // 2행 (D)(E)는 표시 격자가 아니라 물리 격자 nd=20 을 쓴다 —
+  // (E)가 nd=14를 쓰면 (F) 산란 패턴과 다른 격자의 결과를 나란히 놓게 된다.
+  var ND_PHYS = 20;
+  var THETA_SAMPLES = 181; // (F) 곡선: 1° 간격
+
   var grid = RGD.buildDipoleGrid(1, ND_DISPLAY);
+  var physGrid = RGD.buildDipoleGrid(1, ND_PHYS);
+  var theta = Math.PI / 2; // (E)(F) 전용 θ (전역 λ 슬라이더와 별개)
   var lambda = LAMBDA_MIN;
   var term = 'full';
   var scaleMode = 'auto';
@@ -477,6 +484,10 @@
     }
 
     renderMetrics();
+
+    renderD(k);
+    renderE(k);
+    renderF();
   }
 
   // 지표 줄 — (B) 이미지 위의 오버레이. 세 비는 모두 "산란장의 구성"에 관한
@@ -492,6 +503,286 @@
       '</b> · 유도 <b>' + metrics.induction.toExponential(2) + '</b></span>' +
       '<span class="m-sep">│</span>' +
       '<span class="m-go">나가는 장: 복사 <b>' + metrics.radiation.toExponential(2) + '</b></span>';
+  }
+
+  // ---------------------------------------------------------------------
+  // 2행 — 기제 패널 (D)(E)(F)
+  //
+  // 정사각형 좌표계를 셀 안에 중앙 정렬해 letterbox 한다. 종횡비가 1:1이
+  // 아니면 (D)의 원, (E)의 복소평면, (F)의 극좌표가 왜곡되어 논문 표 1의
+  // 코르뉘 나선과 대응이 깨진다.
+  // ---------------------------------------------------------------------
+
+  // 데이터 범위 [-h, h] 를 정사각형으로 그린다. 중심은 (cx0, cy0).
+  function blitSquare(canvas, cx0, cy0, halfSpan) {
+    var body = canvas.parentNode;
+    var dpr = window.devicePixelRatio || 1;
+    var cw = body.clientWidth;
+    var ch = body.clientHeight;
+    if (cw <= 0 || ch <= 0) return null;
+
+    canvas.width = Math.round(cw * dpr);
+    canvas.height = Math.round(ch * dpr);
+    canvas.style.width = cw + 'px';
+    canvas.style.height = ch + 'px';
+
+    var ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cw, ch);
+
+    var side = Math.min(cw, ch);       // 셀보다 작아도 무방 — 정사각형 유지가 우선
+    var ox = (cw - side) / 2;
+    var oy = (ch - side) / 2;
+    var s = side / (2 * halfSpan);
+
+    ctx.strokeStyle = '#e4e4e4';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(ox + 0.5, oy + 0.5, side - 1, side - 1);
+
+    return {
+      ctx: ctx,
+      side: side,
+      s: s,
+      X: function (u) { return ox + side / 2 + (u - cx0) * s; },
+      Y: function (v) { return oy + side / 2 - (v - cy0) * s; }
+    };
+  }
+
+  // --- (D) 내부 위상 지도 -------------------------------------------------
+  // columns[{x, z, m}] 산점도. 색 = cos(k·z), 크기 = m.
+  function renderD(k) {
+    var v = blitSquare(document.getElementById('canvasD'), 0, 0, 1.15);
+    if (!v) return;
+    var ctx = v.ctx;
+
+    // 입자 경계
+    ctx.strokeStyle = '#bbb';
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath();
+    ctx.arc(v.X(0), v.Y(0), v.s, 0, 2 * Math.PI);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    var cols = physGrid.columns;
+    var rgb = [0, 0, 0, 0];
+    // 마커 반지름: 격자 간격(2a/nd = 0.1a)의 절반을 넘지 않아야 이웃과 겹치지
+    // 않는다. 겹치면 m(열의 쌍극자 수) 크기 부호화가 사라지고 통짜 원이 된다.
+    var rMax = 0.9 * (1 / ND_PHYS) * v.s;
+    for (var c = 0; c < cols.length; c++) {
+      var col = cols[c];
+      colorInto(rgb, 0, Math.cos(k * col.z));
+      ctx.fillStyle = 'rgb(' + Math.round(rgb[0]) + ',' + Math.round(rgb[1]) + ',' + Math.round(rgb[2]) + ')';
+      ctx.beginPath();
+      // 넓이가 m에 비례하도록 반지름은 √m
+      ctx.arc(v.X(col.z), v.Y(col.x), rMax * Math.sqrt(col.m / 20), 0, 2 * Math.PI);
+      ctx.fill();
+    }
+
+    // 축 라벨 (z = 진행 방향, 1행과 같은 방향으로 맞춘다)
+    ctx.fillStyle = '#888';
+    ctx.font = '10px Consolas, monospace';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText('+z →', v.X(1.1), v.Y(-1.02));
+    ctx.textAlign = 'left';
+    ctx.fillText('↑ x (편광)', v.X(-1.12), v.Y(0.95));
+  }
+
+  // --- (E) 위상자 합 ------------------------------------------------------
+  // exp(i q·r_j) 를 이어 붙인 누적합 경로.
+  // 그리는 순서는 q̂·r_j 오름차순 — 벡터 합은 교환법칙이 성립하므로 결과는
+  // 순서와 무관하지만, 순서가 없으면 그림이 낙서가 된다. 위치 순으로 이어야
+  // 위상이 단조 증가해 나선이 된다.
+  var walkOrder = null;      // 정렬된 인덱스
+  var walkOrderKey = '';     // 정렬이 유효한 (k, θ) 서명
+
+  function phasorWalk(k, th) {
+    var q = RGD.qVector(k, th, 0); // φ=0 고정
+    var qn = Math.sqrt(q.x * q.x + q.z * q.z);
+    var pts = physGrid.points;
+    var N = physGrid.N;
+
+    var key = k.toExponential(12) + '|' + th.toExponential(12);
+    if (walkOrderKey !== key) {
+      var idx = new Array(pts.length);
+      var proj = new Float64Array(pts.length);
+      for (var i = 0; i < pts.length; i++) {
+        idx[i] = i;
+        // θ→0 에서는 q=0 이라 방향이 정의되지 않으므로 z_j 순서로 대체한다
+        proj[i] = qn < 1e-12 ? pts[i].z : (q.x * pts[i].x + q.z * pts[i].z) / qn;
+      }
+      idx.sort(function (a, b) { return proj[a] - proj[b]; });
+      walkOrder = idx;
+      walkOrderKey = key;
+    }
+
+    // 각 위상자의 길이를 1/N 로 두어 walk 전체 경로 길이가 1이 되게 한다.
+    var re = 0, im = 0;
+    var path = new Float64Array((pts.length + 1) * 2);
+    var o = 2;
+    for (var j = 0; j < walkOrder.length; j++) {
+      var p = pts[walkOrder[j]];
+      var ph = q.x * p.x + q.z * p.z;
+      re += Math.cos(ph) / N;
+      im += Math.sin(ph) / N;
+      path[o] = re; path[o + 1] = im;
+      o += 2;
+    }
+    return { path: path, re: re, im: im };
+  }
+
+  function renderE(k) {
+    // 정사각 데이터 범위: re ∈ [−0.2, 1.1], im ∈ [−0.65, 0.65] (둘 다 span 1.3)
+    var v = blitSquare(document.getElementById('canvasE'), 0.45, 0, 0.65);
+    if (!v) return;
+    var ctx = v.ctx;
+
+    // 축
+    ctx.strokeStyle = '#eee';
+    ctx.beginPath();
+    ctx.moveTo(v.X(-0.2), v.Y(0)); ctx.lineTo(v.X(1.1), v.Y(0));
+    ctx.moveTo(v.X(0), v.Y(-0.65)); ctx.lineTo(v.X(0), v.Y(0.65));
+    ctx.stroke();
+
+    // θ=0 기준선 — 모든 위상자가 정렬되었을 때의 길이 1 직선
+    ctx.strokeStyle = '#ccc';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(v.X(0), v.Y(0)); ctx.lineTo(v.X(1), v.Y(0));
+    ctx.stroke();
+
+    var w = phasorWalk(k, theta);
+
+    // walk 경로
+    ctx.strokeStyle = '#2f6f9f';
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(v.X(w.path[0]), v.Y(w.path[1]));
+    for (var i = 2; i < w.path.length; i += 2) {
+      ctx.lineTo(v.X(w.path[i]), v.Y(w.path[i + 1]));
+    }
+    ctx.stroke();
+
+    // 합 벡터
+    ctx.strokeStyle = '#c0392b';
+    ctx.fillStyle = '#c0392b';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(v.X(0), v.Y(0));
+    ctx.lineTo(v.X(w.re), v.Y(w.im));
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(v.X(w.re), v.Y(w.im), 3.5, 0, 2 * Math.PI);
+    ctx.fill();
+
+    ctx.fillStyle = '#888';
+    ctx.font = '10px Consolas, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText('θ=0 기준선 (길이 1)', v.X(0.5), v.Y(0) + 4);
+
+    document.getElementById('phasorLabel').textContent =
+      'θ = ' + Math.round((theta * 180) / Math.PI) + '°, |F|/N = ' +
+      Math.sqrt(w.re * w.re + w.im * w.im).toFixed(4);
+  }
+
+  // --- (F) 산란 패턴 ------------------------------------------------------
+  // |F|는 θ에만 의존하고 φ에는 무관하다(|q| = 2k·sin(θ/2)). 두 곡선은 여기에
+  // 편광 인자만 다르게 곱한 것이다:
+  //   수직면 φ=90° : sin²Θ = 1     → dσ/dΩ = |F(θ)|²        (위상자 크기의 제곱 그 자체)
+  //   편광면 φ=0   : sin²Θ = cos²θ → dσ/dΩ = |F(θ)|²·cos²θ  (θ=90°에서 0)
+  // 따라서 |F(θ)|² 를 한 번만 계산하고 두 인자를 곱해 쓴다. φ=0 슬라이스이므로
+  // 열 축약(316항)이 그대로 쓰이며, 이는 근사가 아니라 정확한 항등식이다.
+  var fCurve = new Float64Array(THETA_SAMPLES); // |F(θ)/N|²
+
+  function computeFCurve(k) {
+    var N = physGrid.N;
+    for (var i = 0; i < THETA_SAMPLES; i++) {
+      var th = (Math.PI * i) / (THETA_SAMPLES - 1);
+      var q = RGD.qVector(k, th, 0);
+      var F = RGD.formFactorPhi0Columns(physGrid.columns, q.x, q.z);
+      fCurve[i] = (F.re * F.re + F.im * F.im) / (N * N);
+    }
+  }
+
+  function renderF() {
+    var v = blitSquare(document.getElementById('canvasF'), 0, 0, 1.16);
+    if (!v) return;
+    var ctx = v.ctx;
+    var cx = v.X(0), cy = v.Y(0), R = v.s;
+
+    // 극좌표 눈금
+    ctx.strokeStyle = '#eee';
+    ctx.lineWidth = 1;
+    [0.25, 0.5, 0.75, 1].forEach(function (r) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, R * r, 0, 2 * Math.PI);
+      ctx.stroke();
+    });
+    for (var a = 0; a < 180; a += 30) {
+      var t = (a * Math.PI) / 180;
+      ctx.beginPath();
+      ctx.moveTo(cx - R * Math.cos(t), cy - R * Math.sin(t));
+      ctx.lineTo(cx + R * Math.cos(t), cy + R * Math.sin(t));
+      ctx.stroke();
+    }
+
+    // θ는 +z(오른쪽)에서 잰다. 위/아래로 대칭 복사해 닫힌 로브를 만든다.
+    function drawCurve(polFactor, color, width) {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.beginPath();
+      var i, th, r, px, py;
+      for (i = 0; i < THETA_SAMPLES; i++) {
+        th = (Math.PI * i) / (THETA_SAMPLES - 1);
+        r = R * fCurve[i] * polFactor(th);
+        px = cx + r * Math.cos(th);
+        py = cy - r * Math.sin(th);
+        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      for (i = THETA_SAMPLES - 1; i >= 0; i--) {
+        th = (Math.PI * i) / (THETA_SAMPLES - 1);
+        r = R * fCurve[i] * polFactor(th);
+        ctx.lineTo(cx + r * Math.cos(th), cy + r * Math.sin(th));
+      }
+      ctx.closePath();
+      ctx.stroke();
+    }
+
+    var perp = function () { return 1; };                                  // φ=90°: sin²Θ = 1
+    var para = function (th) { var c = Math.cos(th); return c * c; };      // φ=0  : sin²Θ = cos²θ
+
+    drawCurve(para, '#c0392b', 1.6);
+    drawCurve(perp, '#2f6f9f', 2);
+
+    // θ 마커는 수직면(φ=90°) 곡선 위에 둔다 — 그 곡선이 |F(θ)|² 그 자체이므로
+    // (E) 위상자 크기의 제곱과 직접 대응한다.
+    var idx = Math.round((theta / Math.PI) * (THETA_SAMPLES - 1));
+    var rm = R * fCurve[idx];
+    ctx.fillStyle = '#111';
+    ctx.beginPath();
+    ctx.arc(cx + rm * Math.cos(theta), cy - rm * Math.sin(theta), 4, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.strokeStyle = '#111';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + R * Math.cos(theta), cy - R * Math.sin(theta));
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // 범례
+    ctx.font = '10px "Malgun Gothic", sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = '#2f6f9f';
+    ctx.fillText('— 수직면 φ=90°', v.X(-1.13), v.Y(1.13));
+    ctx.fillStyle = '#c0392b';
+    ctx.fillText('— 편광면 φ=0', v.X(-1.13), v.Y(1.0));
+    ctx.fillStyle = '#888';
+    ctx.textAlign = 'right';
+    ctx.fillText('+z →', v.X(1.13), v.Y(-1.03));
   }
 
   // ---------------------------------------------------------------------
@@ -529,9 +820,19 @@
     // 브라우저가 "계산 중…"을 페인트할 틈을 주기 위해 한 틱 미룬다.
     setTimeout(function () {
       compute();
+      computeFCurve((2 * Math.PI) / lambda); // (F) 곡선도 λ에만 의존한다
       render();
       status.textContent = '';
     }, 0);
+  }
+
+  // θ만 바뀔 때는 (E)(F)만 다시 그리면 된다 — 1행 장 데이터도 (F) 곡선도
+  // λ에만 의존하므로 재계산이 필요 없다. 그래서 change가 아니라 input에서
+  // 즉시 반응해도 무리가 없다.
+  function renderThetaOnly() {
+    var k = (2 * Math.PI) / lambda;
+    renderE(k);
+    renderF();
   }
 
   // ---------------------------------------------------------------------
@@ -587,6 +888,15 @@
   document.getElementById('scaleSelect').addEventListener('change', function () {
     scaleMode = this.value;
     render();
+  });
+
+  // (E)(F) 전용 θ 슬라이더 — 전역 λ 슬라이더와 별개
+  var thetaSlider = document.getElementById('thetaSlider');
+  thetaSlider.addEventListener('input', function () {
+    var deg = parseFloat(thetaSlider.value);
+    theta = (deg * Math.PI) / 180;
+    document.getElementById('thetaReadout').textContent = deg + '°';
+    renderThetaOnly();
   });
 
   // "수치" 토글 — 상태는 세션 동안 유지된다(λ를 바꿔도 꺼지지 않는다).

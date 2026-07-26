@@ -24,6 +24,12 @@
   </div>
 
   <div class="ctl-group">
+    <label for="thetaSlider">θ</label>
+    <input type="range" id="thetaSlider" min="0" max="180" step="1" value="90">
+    <span class="readout" id="thetaReadout">90°</span>
+  </div>
+
+  <div class="ctl-group">
     <span class="ctl-label">(B) 표시 항</span>
     <select id="termSelect">
       <option value="full">전체</option>
@@ -136,19 +142,76 @@
 
   <!-- ================= 2행 — 기제 ================= -->
 
-  <section class="panel square">
-    <h2>(D) 내부 위상 지도</h2>
-    <div class="body"><p class="todo">다음 단계에서 구현</p></div>
+  <section class="panel">
+    <h2>(D) 내부 위상 지도<span class="sub">구동 위상 cos(k z)</span>
+      <span class="tools"><button type="button" class="tool info-btn" data-info="infoD">ⓘ</button></span>
+    </h2>
+    <div class="body">
+      <canvas id="canvasD"></canvas>
+      <div class="info-overlay" id="infoD" hidden>
+        <h3>(D) 내부 위상 지도</h3>
+        <p>입자 내부를 xz 단면으로 본 것입니다. 각 점은 쌍극자 <strong>열</strong>(같은 x, z를
+        공유하는 y 방향 줄)이고, 크기는 그 열에 든 쌍극자 수 m, 색은 구동 위상
+        <code>cos(k z_j)</code>입니다. 물리 격자 n_d = 20(N = 4224, 열 316개)을 씁니다.</p>
+        <p>파장이 길어지면 입자 전체가 <strong>한 가지 색</strong>이 됩니다. 모든 쌍극자가 같은
+        위상으로 흔들린다는 뜻이고, 이것이 논문 Ⅲ.2의 <strong>위상 균일성(ka ≪ 1)</strong>입니다.
+        (B)의 3갈래 분해가 관측점 조건(kR ≪ 1)인 것과 달리, 이쪽은 파원 영역의 조건입니다.</p>
+        <p>파장이 짧아지면 z 방향으로 색이 갈리기 시작하고, 그 위상차가 곧 (E)의 위상자가
+        흩어지는 원인이 됩니다.</p>
+      </div>
+    </div>
+    <p class="caption">파장이 길면 전체가 한 색 — 모든 쌍극자가 같은 위상으로 흔들린다
+    (논문 Ⅲ.2의 위상 균일성 ka ≪ 1).</p>
   </section>
 
-  <section class="panel square">
-    <h2>(E) 위상자 합</h2>
-    <div class="body"><p class="todo">다음 단계에서 구현</p></div>
+  <section class="panel">
+    <h2>(E) 위상자 합<span class="sub" id="phasorLabel"></span>
+      <span class="tools"><button type="button" class="tool info-btn" data-info="infoE">ⓘ</button></span>
+    </h2>
+    <div class="body">
+      <canvas id="canvasE"></canvas>
+      <div class="info-overlay" id="infoE" hidden>
+        <h3>(E) 위상자 합</h3>
+        <p>쌍극자마다의 <code>exp(i q·r_j)</code>를 이어 붙인 누적합 경로입니다.
+        <code>q = k(ẑ − n̂)</code>, φ = 0 으로 고정합니다 — |F|는 φ에 무관하지만 개별 위상
+        q·r_j 는 q 방향에 의존하므로 재현성을 위해 고정합니다.</p>
+        <p><strong>그리는 순서</strong>는 q̂·r_j 오름차순입니다. 벡터 합은 교환법칙이 성립해
+        결과는 순서와 무관하지만, 순서가 없으면 그림이 낙서가 됩니다. 위치 순으로 이어야
+        위상이 단조 증가해 나선이 됩니다(θ→0 에서는 q = 0 이라 방향이 정의되지 않으므로
+        z_j 순서로 대체).</p>
+        <p><strong>정규화</strong>: 각 위상자의 길이를 1/N 로 두어 전체 경로 길이가 1입니다.
+        θ = 0 에서는 모든 위상자가 정렬되어 길이 1의 직선이 되며, 이것이 회색 기준선입니다.
+        θ가 커지면 위상이 흩어져 경로가 말리고, 양 끝을 잇는 합 |F|/N 이 줄어듭니다.</p>
+        <p>경로 끝점이 항상 실수축 위에 놓이는 것은 격자가 원점 대칭이어서
+        Im(F) = 0 이기 때문입니다(검증 6).</p>
+      </div>
+    </div>
+    <p class="caption">θ가 커질수록 위상이 흩어져 경로가 말린다. 벌어진 만큼 합이 줄어든다.</p>
   </section>
 
-  <section class="panel square">
-    <h2>(F) 산란 패턴</h2>
-    <div class="body"><p class="todo">다음 단계에서 구현</p></div>
+  <section class="panel">
+    <h2>(F) 산란 패턴<span class="sub">dσ/dΩ (θ=0 규격화)</span>
+      <span class="tools"><button type="button" class="tool info-btn" data-info="infoF">ⓘ</button></span>
+    </h2>
+    <div class="body">
+      <canvas id="canvasF"></canvas>
+      <div class="info-overlay" id="infoF" hidden>
+        <h3>(F) 산란 패턴</h3>
+        <p>극좌표 dσ/dΩ 입니다. +z(전방)가 오른쪽이며, θ = 0 값으로 규격화했습니다.</p>
+        <p>|F|는 θ에만 의존하고 φ에는 무관합니다(|q| = 2k·sin(θ/2)). 두 곡선은 여기에
+        <strong>편광 인자만 다르게 곱한 것</strong>입니다:</p>
+        <table>
+          <tr><th>면</th><th>sin²Θ</th><th>dσ/dΩ</th></tr>
+          <tr><td>수직면 φ=90°</td><td>1</td><td>|F(θ)|²</td></tr>
+          <tr><td>편광면 φ=0</td><td>cos²θ</td><td>|F(θ)|²·cos²θ</td></tr>
+        </table>
+        <p>수직면 곡선이 위상자 크기의 제곱 그 자체이므로 θ 마커를 그 위에 둡니다.
+        편광면 곡선은 θ = 90° 에서 정확히 0 이 되는데, 그 방향이 곧 편광축(x̂)이라
+        쌍극자가 그쪽으로는 복사하지 않기 때문입니다.</p>
+      </div>
+    </div>
+    <p class="caption">두 곡선의 차이는 쌍극자 복사의 편광 인자이며,
+    공통된 모양은 모두 위상자 합에서 온다.</p>
   </section>
 
 </div>

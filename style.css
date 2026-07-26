@@ -170,25 +170,9 @@ select {
   max-height: 100%;
 }
 
-/* 2행 패널은 셀 안에서 정사각형을 유지하며 중앙 정렬 (셀보다 작아도 무방) */
-.panel.square .body > * {
-  aspect-ratio: 1;
-  max-width: 100%;
-  max-height: 100%;
-}
-
-.todo {
-  color: #bbb;
-  font-size: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px dashed #ddd;
-  border-radius: 3px;
-  width: 100%;
-  height: 100%;
-  margin: 0;
-}
+/* 2행 패널의 정사각형 유지는 script.js 의 blitSquare 가 담당한다
+   (셀 안에서 min(폭, 높이) 변을 잡아 중앙 정렬 — 셀보다 작아도 무방).
+   종횡비가 1:1이 아니면 (D)의 원, (E)의 복소평면, (F)의 극좌표가 왜곡된다. */
 
 /* ---------------- 캡션·지표 ---------------- */
 
