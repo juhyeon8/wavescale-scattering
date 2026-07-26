@@ -61,7 +61,8 @@
 
   var grid = RGD.buildDipoleGrid(1, ND_DISPLAY);
   var physGrid = RGD.buildDipoleGrid(1, ND_PHYS);
-  var theta = Math.PI / 2; // (E)(F) 전용 θ (전역 λ 슬라이더와 별개)
+  var theta = Math.PI / 2; // (E)(F) 전용 θ. 탭 2 진입 시 기본 90°
+  var activeTab = 1;       // λ/a 는 두 탭이 공유한다(탭을 바꿔도 유지)
   var lambda = LAMBDA_MIN;
   var term = 'full';
   var scaleMode = 'auto';
@@ -445,7 +446,20 @@
   // 그리기
   // ---------------------------------------------------------------------
 
+  // 숨은 탭의 캔버스는 clientWidth = 0 이라 그릴 수 없다. 활성 탭만 그리고,
+  // 탭을 전환할 때 그 탭을 다시 그린다.
   function render() {
+    if (activeTab === 1) renderTab1();
+    else renderTab2();
+  }
+
+  function renderTab2() {
+    var k = (2 * Math.PI) / lambda;
+    renderPhasorSum(k);
+    renderScatterPattern();
+  }
+
+  function renderTab1() {
     var k = (2 * Math.PI) / lambda;
 
     var srcA = paint('A', function (p) { return incidentRe[p]; });
@@ -484,10 +498,7 @@
     }
 
     renderMetrics();
-
     renderD(k);
-    renderE(k);
-    renderF();
   }
 
   // 지표 줄 — (B) 이미지 위의 오버레이. 세 비는 모두 "산란장의 구성"에 관한
@@ -550,7 +561,29 @@
 
   // --- (D) 내부 위상 지도 -------------------------------------------------
   // columns[{x, z, m}] 산점도. 색 = cos(k·z), 크기 = m.
+  // 색 줄무늬 개수 — (D)의 핵심 메시지를 숫자로 못박는다.
+  // 구동 위상은 cos(k z) 이고 입자 안에서 z ∈ [−a, a] 이므로 위상은 2ka 만큼
+  // 변한다. 그 구간에 들어가는 반주기(색이 한 번 뒤집히는 단위) 수를 센다.
+  function renderStripes(k) {
+    var el = document.getElementById('stripeReadout');
+    if (!el) return;
+    var halfPeriods = (2 * k) / Math.PI; // 2ka / π,  a = 1
+    var txt, note;
+    if (halfPeriods < 0.15) {
+      txt = '거의 단색';
+      note = '입자 전체가 같은 위상으로 진동 — 논문 Ⅲ.2가 성립하는 영역';
+    } else if (halfPeriods < 1) {
+      txt = '줄무늬 1개 미만';
+      note = '위상 균일성이 흔들리기 시작하는 지점';
+    } else {
+      txt = '색 줄무늬 약 ' + halfPeriods.toFixed(1) + '개';
+      note = '입자 안에서 위상이 뒤집힌다 — "전체가 같은 위상"이 무너진 영역';
+    }
+    el.innerHTML = '<b>' + txt + '</b><span class="note">' + note + '</span>';
+  }
+
   function renderD(k) {
+    renderStripes(k);
     var v = blitSquare(document.getElementById('canvasD'), 0, 0, 1.15);
     if (!v) return;
     var ctx = v.ctx;
@@ -631,9 +664,9 @@
     return { path: path, re: re, im: im };
   }
 
-  function renderE(k) {
+  function renderPhasorSum(k) {
     // 정사각 데이터 범위: re ∈ [−0.2, 1.1], im ∈ [−0.65, 0.65] (둘 다 span 1.3)
-    var v = blitSquare(document.getElementById('canvasE'), 0.45, 0, 0.65);
+    var v = blitSquare(document.getElementById('canvasPhasor'), 0.45, 0, 0.65);
     if (!v) return;
     var ctx = v.ctx;
 
@@ -681,8 +714,8 @@
     ctx.textBaseline = 'top';
     ctx.fillText('θ=0 기준선 (길이 1)', v.X(0.5), v.Y(0) + 4);
 
-    document.getElementById('phasorLabel').textContent =
-      'θ = ' + Math.round((theta * 180) / Math.PI) + '°, |F|/N = ' +
+    document.getElementById('phasorTheta').textContent =
+      '원거리 방향 θ = ' + Math.round((theta * 180) / Math.PI) + '° (φ=0) · |F|/N = ' +
       Math.sqrt(w.re * w.re + w.im * w.im).toFixed(4);
   }
 
@@ -705,13 +738,119 @@
     }
   }
 
-  function renderF() {
-    var v = blitSquare(document.getElementById('canvasF'), 0, 0, 1.16);
+  // 편광 인자 — 두 곡선은 |F(θ)|² 에 이것만 다르게 곱한 것이다
+  function polPerp() { return 1; }                                  // φ=90°: sin²Θ = 1
+  function polPara(th) { var c = Math.cos(th); return c * c; }      // φ=0  : sin²Θ = cos²θ
+
+  var polarMode = false; // 기본은 직교 좌표
+
+  // 클릭·드래그로 θ를 고르기 위해, 마지막으로 그린 플롯 기하를 기억해 둔다
+  var scatterGeom = null;
+
+  function renderScatterPattern() {
+    if (polarMode) renderScatterPolar();
+    else renderScatterCartesian();
+  }
+
+  // 직교 좌표 (기본) — 세로축이 위상자 합의 |F|/N 제곱과 직접 대응하므로
+  // 두 패널의 연결이 분명해진다.
+  function renderScatterCartesian() {
+    var canvas = document.getElementById('canvasScatter');
+    var body = canvas.parentNode;
+    var dpr = window.devicePixelRatio || 1;
+    var cw = body.clientWidth, ch = body.clientHeight;
+    if (cw <= 0 || ch <= 0) return;
+
+    canvas.width = Math.round(cw * dpr);
+    canvas.height = Math.round(ch * dpr);
+    canvas.style.width = cw + 'px';
+    canvas.style.height = ch + 'px';
+    var ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cw, ch);
+
+    var mL = 46, mR = 12, mT = 12, mB = 36;
+    var pw = cw - mL - mR, phh = ch - mT - mB;
+    if (pw <= 10 || phh <= 10) return;
+
+    var TX = function (deg) { return mL + (deg / 180) * pw; };
+    var TY = function (val) { return mT + (1 - val) * phh; };
+    scatterGeom = { mode: 'cart', TX: TX, mL: mL, pw: pw, mT: mT, ph: phh };
+
+    // 눈금
+    ctx.strokeStyle = '#eee';
+    ctx.fillStyle = '#999';
+    ctx.lineWidth = 1;
+    ctx.font = '10px Consolas, monospace';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    [0, 0.25, 0.5, 0.75, 1].forEach(function (val) {
+      ctx.beginPath();
+      ctx.moveTo(mL, TY(val)); ctx.lineTo(mL + pw, TY(val));
+      ctx.stroke();
+      ctx.fillText(val.toFixed(2), mL - 5, TY(val));
+    });
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    [0, 30, 60, 90, 120, 150, 180].forEach(function (deg) {
+      ctx.beginPath();
+      ctx.moveTo(TX(deg), mT); ctx.lineTo(TX(deg), mT + phh);
+      ctx.stroke();
+      ctx.fillText(deg + '°', TX(deg), mT + phh + 5);
+    });
+
+    // 축 이름 — θ는 공간의 점이 아니라 원거리 관측 방향이다
+    ctx.fillStyle = '#666';
+    ctx.font = '10.5px "Malgun Gothic", sans-serif';
+    ctx.fillText('산란 방향 θ (원거리)', mL + pw / 2, mT + phh + 19);
+    ctx.save();
+    ctx.translate(11, mT + phh / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.textBaseline = 'top';
+    ctx.fillText('dσ/dΩ (θ=0 규격화)', 0, 0);
+    ctx.restore();
+
+    function curve(pol, color, width) {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.beginPath();
+      for (var i = 0; i < THETA_SAMPLES; i++) {
+        var th = (Math.PI * i) / (THETA_SAMPLES - 1);
+        var px = TX((th * 180) / Math.PI), py = TY(fCurve[i] * pol(th));
+        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+    }
+    curve(polPara, '#c0392b', 1.6);
+    curve(polPerp, '#2f6f9f', 2);
+
+    // 현재 방향 마커 — 수직면 곡선 위에 둔다(그 곡선이 |F(θ)|² 그 자체이므로
+    // 위상자 크기의 제곱과 직접 대응한다)
+    var idx = Math.round((theta / Math.PI) * (THETA_SAMPLES - 1));
+    var mx = TX((theta * 180) / Math.PI);
+    ctx.strokeStyle = '#111';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(mx, mT); ctx.lineTo(mx, mT + phh);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#111';
+    ctx.beginPath();
+    ctx.arc(mx, TY(fCurve[idx]), 4.5, 0, 2 * Math.PI);
+    ctx.fill();
+
+    drawLegend(ctx, mL + 8, mT + 6);
+  }
+
+  // 극좌표 ("방향 분포로 보기") — 정사각형이 강제된다
+  function renderScatterPolar() {
+    var v = blitSquare(document.getElementById('canvasScatter'), 0, 0, 1.16);
     if (!v) return;
     var ctx = v.ctx;
     var cx = v.X(0), cy = v.Y(0), R = v.s;
+    scatterGeom = { mode: 'polar', cx: cx, cy: cy, R: R };
 
-    // 극좌표 눈금
     ctx.strokeStyle = '#eee';
     ctx.lineWidth = 1;
     [0.25, 0.5, 0.75, 1].forEach(function (r) {
@@ -728,41 +867,29 @@
     }
 
     // θ는 +z(오른쪽)에서 잰다. 위/아래로 대칭 복사해 닫힌 로브를 만든다.
-    function drawCurve(polFactor, color, width) {
+    function curve(pol, color, width) {
       ctx.strokeStyle = color;
       ctx.lineWidth = width;
       ctx.beginPath();
-      var i, th, r, px, py;
+      var i, th, r;
       for (i = 0; i < THETA_SAMPLES; i++) {
         th = (Math.PI * i) / (THETA_SAMPLES - 1);
-        r = R * fCurve[i] * polFactor(th);
-        px = cx + r * Math.cos(th);
-        py = cy - r * Math.sin(th);
-        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        r = R * fCurve[i] * pol(th);
+        if (i === 0) ctx.moveTo(cx + r, cy); else ctx.lineTo(cx + r * Math.cos(th), cy - r * Math.sin(th));
       }
       for (i = THETA_SAMPLES - 1; i >= 0; i--) {
         th = (Math.PI * i) / (THETA_SAMPLES - 1);
-        r = R * fCurve[i] * polFactor(th);
+        r = R * fCurve[i] * pol(th);
         ctx.lineTo(cx + r * Math.cos(th), cy + r * Math.sin(th));
       }
       ctx.closePath();
       ctx.stroke();
     }
+    curve(polPara, '#c0392b', 1.6);
+    curve(polPerp, '#2f6f9f', 2);
 
-    var perp = function () { return 1; };                                  // φ=90°: sin²Θ = 1
-    var para = function (th) { var c = Math.cos(th); return c * c; };      // φ=0  : sin²Θ = cos²θ
-
-    drawCurve(para, '#c0392b', 1.6);
-    drawCurve(perp, '#2f6f9f', 2);
-
-    // θ 마커는 수직면(φ=90°) 곡선 위에 둔다 — 그 곡선이 |F(θ)|² 그 자체이므로
-    // (E) 위상자 크기의 제곱과 직접 대응한다.
     var idx = Math.round((theta / Math.PI) * (THETA_SAMPLES - 1));
     var rm = R * fCurve[idx];
-    ctx.fillStyle = '#111';
-    ctx.beginPath();
-    ctx.arc(cx + rm * Math.cos(theta), cy - rm * Math.sin(theta), 4, 0, 2 * Math.PI);
-    ctx.fill();
     ctx.strokeStyle = '#111';
     ctx.lineWidth = 1;
     ctx.setLineDash([3, 3]);
@@ -771,18 +898,27 @@
     ctx.lineTo(cx + R * Math.cos(theta), cy - R * Math.sin(theta));
     ctx.stroke();
     ctx.setLineDash([]);
+    ctx.fillStyle = '#111';
+    ctx.beginPath();
+    ctx.arc(cx + rm * Math.cos(theta), cy - rm * Math.sin(theta), 4.5, 0, 2 * Math.PI);
+    ctx.fill();
 
-    // 범례
+    ctx.fillStyle = '#888';
+    ctx.font = '10px Consolas, monospace';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText('+z → (θ=0, 원거리 방향)', v.X(1.13), v.Y(-1.04));
+    drawLegend(ctx, v.X(-1.13), v.Y(1.13));
+  }
+
+  function drawLegend(ctx, x, y) {
     ctx.font = '10px "Malgun Gothic", sans-serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
     ctx.fillStyle = '#2f6f9f';
-    ctx.fillText('— 수직면 φ=90°', v.X(-1.13), v.Y(1.13));
+    ctx.fillText('— 수직면 φ=90°  |F(θ)|²', x, y);
     ctx.fillStyle = '#c0392b';
-    ctx.fillText('— 편광면 φ=0', v.X(-1.13), v.Y(1.0));
-    ctx.fillStyle = '#888';
-    ctx.textAlign = 'right';
-    ctx.fillText('+z →', v.X(1.13), v.Y(-1.03));
+    ctx.fillText('— 편광면 φ=0    |F(θ)|²·cos²θ', x, y + 13);
   }
 
   // ---------------------------------------------------------------------
@@ -826,13 +962,11 @@
     }, 0);
   }
 
-  // θ만 바뀔 때는 (E)(F)만 다시 그리면 된다 — 1행 장 데이터도 (F) 곡선도
-  // λ에만 의존하므로 재계산이 필요 없다. 그래서 change가 아니라 input에서
-  // 즉시 반응해도 무리가 없다.
+  // θ만 바뀔 때는 (E)(F)만 다시 그리면 된다 — 장 데이터도 (F) 곡선도 λ에만
+  // 의존하므로 재계산이 필요 없다. 그래서 change가 아니라 input에서 즉시
+  // 반응해도 무리가 없다.
   function renderThetaOnly() {
-    var k = (2 * Math.PI) / lambda;
-    renderE(k);
-    renderF();
+    renderTab2();
   }
 
   // ---------------------------------------------------------------------
@@ -890,13 +1024,72 @@
     render();
   });
 
-  // (E)(F) 전용 θ 슬라이더 — 전역 λ 슬라이더와 별개
-  var thetaSlider = document.getElementById('thetaSlider');
-  thetaSlider.addEventListener('input', function () {
-    var deg = parseFloat(thetaSlider.value);
+  // 탭 전환 — λ/a 는 두 탭이 공유하므로 재계산 없이 다시 그리기만 한다.
+  var tabButtons = document.querySelectorAll('.tab-btn');
+  function setTab(n) {
+    activeTab = n;
+    for (var i = 0; i < tabButtons.length; i++) {
+      tabButtons[i].classList.toggle('on', parseInt(tabButtons[i].getAttribute('data-tab'), 10) === n);
+    }
+    document.getElementById('tab1').hidden = (n !== 1);
+    document.getElementById('tab2').hidden = (n !== 2);
+    var groups = document.querySelectorAll('.ctl-group[data-tab]');
+    for (var j = 0; j < groups.length; j++) {
+      groups[j].hidden = parseInt(groups[j].getAttribute('data-tab'), 10) !== n;
+    }
+    // 열려 있던 ⓘ는 닫는다(다른 탭의 것이 남아 있으면 혼란스럽다)
+    var overlays = document.querySelectorAll('.info-overlay');
+    for (var q = 0; q < overlays.length; q++) overlays[q].hidden = true;
+    var ibtns = document.querySelectorAll('.info-btn');
+    for (var r = 0; r < ibtns.length; r++) ibtns[r].classList.remove('on');
+    render();
+  }
+  for (var t = 0; t < tabButtons.length; t++) {
+    tabButtons[t].addEventListener('click', function () {
+      setTab(parseInt(this.getAttribute('data-tab'), 10));
+    });
+  }
+
+  // 방향(θ)은 슬라이더가 아니라 산란 패턴 위를 클릭·드래그해 고른다 —
+  // "왼쪽 그래프의 한 점을 고르면 오른쪽이 그 방향의 위상자 합을 보여준다"가
+  // 이 탭의 핵심이므로, 고르는 동작이 그래프 위에서 일어나야 한다.
+  var scatterCanvas = document.getElementById('canvasScatter');
+  var dragging = false;
+
+  function pickTheta(ev) {
+    if (!scatterGeom) return;
+    var r = scatterCanvas.getBoundingClientRect();
+    var px = ev.clientX - r.left;
+    var py = ev.clientY - r.top;
+    var deg;
+    if (scatterGeom.mode === 'cart') {
+      deg = ((px - scatterGeom.mL) / scatterGeom.pw) * 180;
+    } else {
+      // 극좌표: 중심에서의 각도. 위/아래 대칭이므로 절댓값을 쓴다.
+      deg = (Math.atan2(Math.abs(scatterGeom.cy - py), px - scatterGeom.cx) * 180) / Math.PI;
+    }
+    deg = Math.min(180, Math.max(0, deg));
     theta = (deg * Math.PI) / 180;
-    document.getElementById('thetaReadout').textContent = deg + '°';
     renderThetaOnly();
+  }
+
+  scatterCanvas.addEventListener('mousedown', function (ev) {
+    // ⓘ가 열려 있으면 그쪽이 우선
+    if (!document.getElementById('infoScatter').hidden) return;
+    dragging = true;
+    pickTheta(ev);
+    ev.preventDefault();
+  });
+  window.addEventListener('mousemove', function (ev) { if (dragging) pickTheta(ev); });
+  window.addEventListener('mouseup', function () { dragging = false; });
+
+  // "방향 분포로 보기" — 직교 좌표 ↔ 극좌표
+  var polarBtn = document.getElementById('polarBtn');
+  polarBtn.addEventListener('click', function () {
+    polarMode = !polarMode;
+    polarBtn.classList.toggle('on', polarMode);
+    polarBtn.textContent = polarMode ? '그래프로 보기' : '방향 분포로 보기';
+    renderScatterPattern();
   });
 
   // "수치" 토글 — 상태는 세션 동안 유지된다(λ를 바꿔도 꺼지지 않는다).
@@ -932,6 +1125,7 @@
   // ---------------------------------------------------------------------
 
   slider.value = lambdaToSlider(lambda);
+  setTab(1); // 탭 1이 기본. 컨트롤 그룹 표시 상태를 초기화한다
   recompute();
 
   // 최초 recompute 시점에 레이아웃이 아직 안 잡혀 clientWidth가 0이면 blit이

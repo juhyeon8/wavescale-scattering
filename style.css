@@ -31,8 +31,11 @@ body {
   padding: 6px 10px;
   background: #fff;
   border: 1px solid #ddd;
-  border-radius: 4px;
+  border-radius: 0 4px 4px 4px;
 }
+
+/* 컨트롤 그룹은 자기 탭에서만 보인다 (λ/a 표시는 두 탭 공통) */
+.ctl-group[hidden] { display: none; }
 
 .ctl-group {
   display: flex;
@@ -87,19 +90,55 @@ select {
   min-width: 60px;
 }
 
+/* ---------------- 탭 ---------------- */
+
+.tabs {
+  flex: none;
+  display: flex;
+  gap: 4px;
+}
+
+.tab-btn {
+  font: inherit;
+  font-size: 12.5px;
+  padding: 6px 14px;
+  border: 1px solid #ddd;
+  border-bottom: none;
+  border-radius: 4px 4px 0 0;
+  background: #f0f0f0;
+  color: #666;
+  cursor: pointer;
+}
+
+.tab-btn:hover { background: #e8eff6; }
+.tab-btn.on { background: #fff; color: #1a1a1a; font-weight: 700; border-color: #ccc; }
+
 /* ---------------- 패널 격자 ----------------
-   1행은 z 방향으로 긴 가로 직사각형, 2행은 정사각형이 강제된다
-   ((D) 원, (E) 복소평면, (F) 극좌표 — 1:1이 아니면 나선과 로브가 왜곡됨).
-   균등 분할하면 1행이 남고 2행이 모자라므로 250:340 비율을 유지한다. */
+   탭 1은 2×2 균등. 각 패널이 자기 셀 안에서 letterbox 하므로
+   (A)(B)(C)의 이미지 크기는 픽셀 단위로 동일하다.
+   탭 2는 (F) 위 / (E) 아래 상하 2단. */
 
 .panels {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  grid-template-rows: 250fr 340fr;
   gap: 8px;
 }
+
+.panels.grid2x2 {
+  grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+}
+
+/* 탭 2 — 좌우 배치. 두 그래프 모두 정사각형이 강제되므로(극좌표 / 복소평면)
+   좌우로 두면 각 절반 폭에 딱 맞아 좌우 여백이 생기지 않는다.
+   원인(산란 패턴)이 왼쪽, 결과(위상자 합)가 오른쪽 — 왼→오 읽기 순서. */
+.panels.grid1x2 {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr;
+}
+
+.panels[hidden] { display: none; }
 
 .panel {
   min-width: 0;
@@ -169,6 +208,59 @@ select {
   max-width: 100%;
   max-height: 100%;
 }
+
+/* (D) 는 정사각형이라 셀 안에 좌우 여백이 남는다. 그 자리를 범례로 채운다 —
+   여백을 없애면서 색 규약도 화면에 드러난다. 정사각 칸을 body 높이에 맞춰
+   고정하고 나머지를 범례가 가져간다. (A)(B)(C)의 이미지 크기는 손대지 않는다. */
+.body.split {
+  align-items: stretch;
+  gap: 10px;
+}
+
+.plot-square {
+  flex: none;
+  aspect-ratio: 1;
+  height: 100%;
+  min-width: 0;
+  position: relative;
+}
+
+.legend {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  font-size: 10.5px;
+  color: #555;
+  padding-right: 4px;
+}
+
+.lg-title { font-weight: 700; color: #333; }
+.lg-title span { display: block; font-weight: 400; color: #777; margin-top: 1px; }
+
+.lg-bar { max-width: 190px; }
+.lg-bar i {
+  display: block;
+  height: 11px;
+  border: 1px solid #ccc;
+  border-radius: 2px;
+  background: linear-gradient(to right, rgb(33,102,172), rgb(247,247,247), rgb(178,24,43));
+}
+.lg-ticks { display: flex; justify-content: space-between; font-size: 9.5px; color: #888; margin-top: 1px; }
+
+.lg-row b { color: #333; }
+
+.lg-stripes {
+  border-top: 1px solid #eee;
+  padding-top: 7px;
+  line-height: 1.45;
+}
+.lg-stripes b { display: block; font-size: 15px; color: #2f6f9f; }
+.lg-stripes .note { color: #777; }
+
+.hint { color: #999; }
 
 /* 2행 패널의 정사각형 유지는 script.js 의 blitSquare 가 담당한다
    (셀 안에서 min(폭, 높이) 변을 잡아 중앙 정렬 — 셀보다 작아도 무방).

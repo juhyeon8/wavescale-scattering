@@ -2,20 +2,25 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<title>RGD 소입자 산란 — 장 분포와 기제</title>
+<title>RGD 소입자 산란</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
+<div class="tabs">
+  <button type="button" class="tab-btn on" data-tab="1">파동은 어떻게 통과하는가</button>
+  <button type="button" class="tab-btn" data-tab="2">산란파는 어느 방향으로 얼마나 가는가</button>
+</div>
+
 <div class="controls">
-  <div class="ctl-group">
+  <div class="ctl-group" data-tab="1">
     <label for="lambdaSlider">λ/a</label>
     <input type="range" id="lambdaSlider" min="0" max="1000" value="0">
-    <span class="readout" id="lambdaReadout">λ/a = 3.1416<span class="sep">·</span>x = 2.0000</span>
   </div>
 
-  <div class="ctl-group presets">
-    <span class="ctl-label">프리셋</span>
+  <span class="readout" id="lambdaReadout">λ/a = 3.1416<span class="sep">·</span>x = 2.0000</span>
+
+  <div class="ctl-group presets" data-tab="1">
     <button type="button" data-lambda="2.1e6">21cm 전파</button>
     <button type="button" data-lambda="5">가시광선 500nm</button>
     <button type="button" data-lambda="12">경계 12</button>
@@ -23,13 +28,7 @@
     <button type="button" data-lambda="40">경계 40</button>
   </div>
 
-  <div class="ctl-group">
-    <label for="thetaSlider">θ</label>
-    <input type="range" id="thetaSlider" min="0" max="180" step="1" value="90">
-    <span class="readout" id="thetaReadout">90°</span>
-  </div>
-
-  <div class="ctl-group">
+  <div class="ctl-group" data-tab="1">
     <span class="ctl-label">(B) 표시 항</span>
     <select id="termSelect">
       <option value="full">전체</option>
@@ -50,12 +49,13 @@
   <span class="status" id="status"></span>
 </div>
 
-<div class="panels">
+<!-- ================= 탭 1 — 파동은 어떻게 통과하는가 =================
+     2×2 균등. 읽기 순서가 곧 인과 순서:
+       입사파가 들어와서 → 내부 전하를 흔들고 → 산란파를 내보내고 → 합쳐진다.
+     각 패널이 자기 셀 안에서 letterbox 하므로 (A)(B)(C)의 이미지 크기는
+     픽셀 단위로 동일하다. -->
 
-  <!-- ================= 1행 — 공간 장 분포 (xz 평면 단면) =================
-       세 패널의 세로 구조가 동일해야 이미지 영역이 픽셀 단위로 같아진다:
-         제목 + 이미지 영역(flex:1) + 캡션(고정 높이)
-       지표·배지·ⓘ 설명은 전부 이미지 영역 안의 오버레이로 띄운다. -->
+<div class="panels grid2x2" id="tab1">
 
   <section class="panel">
     <h2>(A) 입사파<span class="sub">Re(E_x), t=0</span>
@@ -74,6 +74,36 @@
       </div>
     </div>
     <p class="caption" id="captionA"></p>
+  </section>
+
+  <section class="panel">
+    <h2>(D) 내부 전하의 진동<span class="sub">구동 위상 cos(k z)</span>
+      <span class="tools"><button type="button" class="tool info-btn" data-info="infoD">ⓘ</button></span>
+    </h2>
+    <div class="body split">
+      <div class="plot-square"><canvas id="canvasD"></canvas></div>
+      <div class="legend">
+        <div class="lg-title">색 = cos(k·z)<span>그 자리의 전하가 흔들리는 위상</span></div>
+        <div class="lg-bar"><i></i>
+          <div class="lg-ticks"><span>−1</span><span>0</span><span>+1</span></div>
+        </div>
+        <div class="lg-row"><b>점 크기</b> = 그 위치의 y방향 두께 (m)</div>
+        <div class="lg-stripes" id="stripeReadout"></div>
+      </div>
+      <div class="info-overlay" id="infoD" hidden>
+        <h3>(D) 내부 전하의 진동</h3>
+        <p>입자 내부를 xz 단면으로 본 것입니다. 각 점은 쌍극자 <strong>열</strong>(같은 x, z를
+        공유하는 y 방향 줄)이고, 크기는 그 열에 든 쌍극자 수 m, 색은 그 자리의 전하가 흔들리는
+        위상 <code>cos(k z_j)</code>입니다. 물리 격자 n_d = 20(N = 4224, 열 316개)을 씁니다.</p>
+        <p>파장이 길어지면 입자 전체가 <strong>한 가지 색</strong>이 됩니다. 모든 전하가 같은
+        위상으로 함께 흔들린다는 뜻이고, 이것이 논문 Ⅲ.2의 <strong>위상 균일성(ka ≪ 1)</strong>입니다.
+        (B)의 3갈래 분해가 관측점 조건(kR ≪ 1)인 것과 달리, 이쪽은 파원 영역의 조건입니다.</p>
+        <p>파장이 짧아지면 z 방향으로 색이 갈리기 시작합니다. 그 위상차가 곧 산란파가
+        방향마다 다르게 나가는 원인입니다(탭 2).</p>
+      </div>
+    </div>
+    <p class="caption">파장이 길면 전체가 한 색 — 입자 안의 전하가 모두 같은 위상으로
+    함께 흔들린다 (논문 Ⅲ.2의 위상 균일성 ka ≪ 1).</p>
   </section>
 
   <section class="panel">
@@ -140,38 +170,60 @@
     전파되지 않아 전체 장이 입사파와 거의 같아진다.</p>
   </section>
 
-  <!-- ================= 2행 — 기제 ================= -->
+</div>
+
+<!-- ================= 탭 2 — 산란파는 어느 방향으로 얼마나 가는가 =================
+     산란 패턴이 왼쪽(원인), 위상자 합이 오른쪽(결과). -->
+
+<div class="panels grid1x2" id="tab2" hidden>
+
+  <!-- 원인(산란 패턴)이 왼쪽, 결과(위상자 합)가 오른쪽 — 왼→오 읽기 순서.
+       왼쪽 그래프의 한 점을 고르면 오른쪽이 그 방향의 위상자 합을 보여준다. -->
 
   <section class="panel">
-    <h2>(D) 내부 위상 지도<span class="sub">구동 위상 cos(k z)</span>
-      <span class="tools"><button type="button" class="tool info-btn" data-info="infoD">ⓘ</button></span>
+    <h2>산란 패턴<span class="sub">원거리 방향별 세기 · dσ/dΩ (θ=0 규격화)</span>
+      <span class="tools">
+        <button type="button" class="tool" id="polarBtn">방향 분포로 보기</button>
+        <button type="button" class="tool info-btn" data-info="infoScatter">ⓘ</button>
+      </span>
     </h2>
     <div class="body">
-      <canvas id="canvasD"></canvas>
-      <div class="info-overlay" id="infoD" hidden>
-        <h3>(D) 내부 위상 지도</h3>
-        <p>입자 내부를 xz 단면으로 본 것입니다. 각 점은 쌍극자 <strong>열</strong>(같은 x, z를
-        공유하는 y 방향 줄)이고, 크기는 그 열에 든 쌍극자 수 m, 색은 구동 위상
-        <code>cos(k z_j)</code>입니다. 물리 격자 n_d = 20(N = 4224, 열 316개)을 씁니다.</p>
-        <p>파장이 길어지면 입자 전체가 <strong>한 가지 색</strong>이 됩니다. 모든 쌍극자가 같은
-        위상으로 흔들린다는 뜻이고, 이것이 논문 Ⅲ.2의 <strong>위상 균일성(ka ≪ 1)</strong>입니다.
-        (B)의 3갈래 분해가 관측점 조건(kR ≪ 1)인 것과 달리, 이쪽은 파원 영역의 조건입니다.</p>
-        <p>파장이 짧아지면 z 방향으로 색이 갈리기 시작하고, 그 위상차가 곧 (E)의 위상자가
-        흩어지는 원인이 됩니다.</p>
+      <canvas id="canvasScatter"></canvas>
+      <div class="info-overlay" id="infoScatter" hidden>
+        <h3>산란 패턴 — 원거리 방향별 세기</h3>
+        <p><strong>θ는 공간의 한 점이 아니라 방향입니다.</strong> 입자에서 충분히 멀리
+        떨어진 곳에서 어느 쪽을 보느냐를 가리키는 원거리 관측 방향이며, θ = 0 이 +z(전방,
+        입사파가 가던 쪽)입니다. 탭 1의 장 분포 그림에서 한 지점을 찍는 것과는 다릅니다.</p>
+        <p>가로축이 그 방향, 세로축이 그 방향으로 나가는 세기 dσ/dΩ 입니다(θ = 0 값으로
+        규격화). "방향 분포로 보기"를 누르면 같은 자료를 극좌표로 봅니다.</p>
+        <p>|F|는 θ에만 의존하고 φ에는 무관합니다(|q| = 2k·sin(θ/2)). 두 곡선은 여기에
+        <strong>편광 인자만 다르게 곱한 것</strong>입니다:</p>
+        <table>
+          <tr><th>면</th><th>sin²Θ</th><th>dσ/dΩ</th></tr>
+          <tr><td>수직면 φ=90°</td><td>1</td><td>|F(θ)|²</td></tr>
+          <tr><td>편광면 φ=0</td><td>cos²θ</td><td>|F(θ)|²·cos²θ</td></tr>
+        </table>
+        <p>수직면 곡선이 위상자 크기의 제곱 그 자체이므로 θ 마커를 그 위에 둡니다.
+        편광면 곡선은 θ = 90° 에서 정확히 0 이 되는데, 그 방향이 곧 편광축(x̂)이라
+        쌍극자가 그쪽으로는 복사하지 않기 때문입니다.</p>
+        <p>곡선 위를 클릭하거나 끌면 그 방향이 선택되고, 오른쪽 위상자 합이 그 방향의
+        것으로 바뀝니다.</p>
       </div>
     </div>
-    <p class="caption">파장이 길면 전체가 한 색 — 모든 쌍극자가 같은 위상으로 흔들린다
-    (논문 Ⅲ.2의 위상 균일성 ka ≪ 1).</p>
+    <p class="caption">산란파는 모든 방향으로 균등하게 나가지 않는다.
+    <span class="hint">— 곡선을 클릭·드래그해 방향을 고르세요</span></p>
   </section>
 
   <section class="panel">
-    <h2>(E) 위상자 합<span class="sub" id="phasorLabel"></span>
-      <span class="tools"><button type="button" class="tool info-btn" data-info="infoE">ⓘ</button></span>
+    <h2>위상자 합<span class="sub" id="phasorTheta"></span>
+      <span class="tools"><button type="button" class="tool info-btn" data-info="infoPhasor">ⓘ</button></span>
     </h2>
     <div class="body">
-      <canvas id="canvasE"></canvas>
-      <div class="info-overlay" id="infoE" hidden>
-        <h3>(E) 위상자 합</h3>
+      <canvas id="canvasPhasor"></canvas>
+      <div class="info-overlay" id="infoPhasor" hidden>
+        <h3>위상자 합</h3>
+        <p><strong>θ는 공간의 한 점이 아니라 원거리 관측 방향입니다.</strong> 왼쪽 그래프에서
+        고른 그 방향으로 나가는 파동을, 쌍극자 하나하나가 보낸 몫으로 분해한 것입니다.</p>
         <p>쌍극자마다의 <code>exp(i q·r_j)</code>를 이어 붙인 누적합 경로입니다.
         <code>q = k(ẑ − n̂)</code>, φ = 0 으로 고정합니다 — |F|는 φ에 무관하지만 개별 위상
         q·r_j 는 q 방향에 의존하므로 재현성을 위해 고정합니다.</p>
@@ -186,32 +238,7 @@
         Im(F) = 0 이기 때문입니다(검증 6).</p>
       </div>
     </div>
-    <p class="caption">θ가 커질수록 위상이 흩어져 경로가 말린다. 벌어진 만큼 합이 줄어든다.</p>
-  </section>
-
-  <section class="panel">
-    <h2>(F) 산란 패턴<span class="sub">dσ/dΩ (θ=0 규격화)</span>
-      <span class="tools"><button type="button" class="tool info-btn" data-info="infoF">ⓘ</button></span>
-    </h2>
-    <div class="body">
-      <canvas id="canvasF"></canvas>
-      <div class="info-overlay" id="infoF" hidden>
-        <h3>(F) 산란 패턴</h3>
-        <p>극좌표 dσ/dΩ 입니다. +z(전방)가 오른쪽이며, θ = 0 값으로 규격화했습니다.</p>
-        <p>|F|는 θ에만 의존하고 φ에는 무관합니다(|q| = 2k·sin(θ/2)). 두 곡선은 여기에
-        <strong>편광 인자만 다르게 곱한 것</strong>입니다:</p>
-        <table>
-          <tr><th>면</th><th>sin²Θ</th><th>dσ/dΩ</th></tr>
-          <tr><td>수직면 φ=90°</td><td>1</td><td>|F(θ)|²</td></tr>
-          <tr><td>편광면 φ=0</td><td>cos²θ</td><td>|F(θ)|²·cos²θ</td></tr>
-        </table>
-        <p>수직면 곡선이 위상자 크기의 제곱 그 자체이므로 θ 마커를 그 위에 둡니다.
-        편광면 곡선은 θ = 90° 에서 정확히 0 이 되는데, 그 방향이 곧 편광축(x̂)이라
-        쌍극자가 그쪽으로는 복사하지 않기 때문입니다.</p>
-      </div>
-    </div>
-    <p class="caption">두 곡선의 차이는 쌍극자 복사의 편광 인자이며,
-    공통된 모양은 모두 위상자 합에서 온다.</p>
+    <p class="caption">이 방향의 세기는 내부 쌍극자들이 방출한 파동의 위상 합 |F|²로 정해진다.</p>
   </section>
 
 </div>
