@@ -15,7 +15,7 @@
       ],
       "n": 60
     },
-    "generatedAt": "2026-07-25T05:05:51.584Z"
+    "generatedAt": "2026-07-26T07:10:03.338Z"
   },
   "checks": [
     {
@@ -72,6 +72,41 @@
       "item": "격자 중심 확인 (Im(F)/N ≈ 0)",
       "measured": "4.7100e-16",
       "threshold": "1e-12",
+      "pass": true
+    },
+    {
+      "id": "7",
+      "item": "원거리 한계 (|E_sca|² vs dSigmaDOmega, r=max(30a,100/k))",
+      "measured": "2.5526e-3",
+      "threshold": "1e-2 (1%)",
+      "pass": true
+    },
+    {
+      "id": "8a",
+      "item": "정전기 극한 — static = [3R̂(R̂·p̂)−p̂]·e^{ikR}/R³ (kR=1e-4)",
+      "measured": "4.4607e-16",
+      "threshold": "1e-12",
+      "pass": true
+    },
+    {
+      "id": "8b",
+      "item": "유도항 k 스케일링 — |induction|/|static| = kR",
+      "measured": "2.7105e-16",
+      "threshold": "1e-12",
+      "pass": true
+    },
+    {
+      "id": "9a",
+      "item": "y 대칭 최적화 (scatteredFieldXZPlane vs 브루트포스)",
+      "measured": "3.9519e-15",
+      "threshold": "1e-10",
+      "pass": true
+    },
+    {
+      "id": "9b",
+      "item": "x 거울 관계 (E_x 짝함수 / E_z 홀함수)",
+      "measured": "3.7543e-15",
+      "threshold": "1e-10",
       "pass": true
     },
     {

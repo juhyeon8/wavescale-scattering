@@ -278,6 +278,239 @@ var RGD = (function () {
     return { sigma: sigma, kh: kh, khOk: kh <= 0.3 + 1e-9 };
   }
 
+  // ---------------------------------------------------------------------
+  // 근접장 (완전한 쌍극자 장 — 원거리 근사를 쓰지 않는다)
+  // ---------------------------------------------------------------------
+
+  // Jackson 9.18. 단위 x-편극 쌍극자(p̂ = x̂) 기준 커널.
+  // 항등식 (R̂×p̂)×R̂ = p̂ − R̂(R̂·p̂) 로 전개하면:
+  //
+  //   E(R) = e^{ikR}/R · { k²[p̂ − R̂(R̂·p̂)] + [3R̂(R̂·p̂) − p̂]·(1/R² − ik/R) }
+  //
+  // 이것을 2갈래(복사/준정전기)가 아니라 반드시 3갈래로 분리한다.
+  // (1/R² − ik/R) 묶음 안에 k 의존성이 서로 다른 두 항이 섞여 있기 때문이다 —
+  // 묶음의 진폭은 (1/R³)·√(1+(kR)²) 이므로 "준정전기항은 λ 무관"은 틀렸다.
+  //
+  //   복사 radiation : k²[p̂ − R̂(R̂·p̂)]        · e^{ikR}/R    → 1/R,  k²  → λ⁻²
+  //   유도 induction : [3R̂(R̂·p̂) − p̂]·(−ik/R) · e^{ikR}/R    → 1/R², k¹  → λ⁻¹
+  //   정전 static    : [3R̂(R̂·p̂) − p̂]·(1/R²)  · e^{ikR}/R    → 1/R³, k⁰  → λ 무관
+  //
+  // 거리 차수와 k 차수가 1:1로 맞물리므로("1/R³↔k⁰, 1/R²↔k¹, 1/R↔k²"),
+  // "파장이 길어질수록 먼 곳까지 가는 성분부터 순서대로 사라진다"가 그대로 읽힌다.
+  //
+  // 반환: { radiation, induction, static } — 각각 {ex, ey, ez}, 각 성분 {re, im}.
+  // 세 항을 합쳐 전체 장을 만드는 것은 호출자의 책임이다(항별 표시가 UI 요구사항).
+  function dipoleFieldKernel(dx, dy, dz, k) {
+    var R2 = dx * dx + dy * dy + dz * dz;
+    var R = Math.sqrt(R2);
+    var R3 = R2 * R;
+
+    // R̂ 성분과 c = R̂·p̂ = R̂_x
+    var ux = dx / R;
+    var uy = dy / R;
+    var uz = dz / R;
+    var c = ux;
+
+    // V1 = p̂ − R̂(R̂·p̂)   (복사항의 벡터 인자)
+    var v1x = 1 - ux * c;
+    var v1y = -uy * c;
+    var v1z = -uz * c;
+
+    // V2 = 3R̂(R̂·p̂) − p̂   (유도·정전항이 공유하는 벡터 인자)
+    var v2x = 3 * ux * c - 1;
+    var v2y = 3 * uy * c;
+    var v2z = 3 * uz * c;
+
+    var kR = k * R;
+    var cosKR = Math.cos(kR);
+    var sinKR = Math.sin(kR);
+
+    // 복사: 계수 = k²/R · e^{ikR}
+    var radA = (k * k) / R;
+    var radRe = radA * cosKR;
+    var radIm = radA * sinKR;
+
+    // 유도: 계수 = (−ik/R)·e^{ikR}/R = (k/R²)·(sin kR − i·cos kR)
+    var indA = k / R2;
+    var indRe = indA * sinKR;
+    var indIm = -indA * cosKR;
+
+    // 정전: 계수 = (1/R²)·e^{ikR}/R = (1/R³)·e^{ikR}
+    var staRe = cosKR / R3;
+    var staIm = sinKR / R3;
+
+    return {
+      radiation: {
+        ex: { re: v1x * radRe, im: v1x * radIm },
+        ey: { re: v1y * radRe, im: v1y * radIm },
+        ez: { re: v1z * radRe, im: v1z * radIm }
+      },
+      induction: {
+        ex: { re: v2x * indRe, im: v2x * indIm },
+        ey: { re: v2y * indRe, im: v2y * indIm },
+        ez: { re: v2z * indRe, im: v2z * indIm }
+      },
+      static: {
+        ex: { re: v2x * staRe, im: v2x * staIm },
+        ey: { re: v2y * staRe, im: v2y * staIm },
+        ez: { re: v2z * staRe, im: v2z * staIm }
+      }
+    };
+  }
+
+  // 전체 격자에 대한 산란 근접장 — 브루트포스 합(대칭 최적화 없음).
+  // verify.js 항목 7·8 전용이며, 임의의 3D 관측점을 지원한다.
+  // UI 최적화 경로(scatteredFieldXZPlane)와 분리해 두어야 검증이 커널 자체를
+  // 검증하는 의미를 갖는다.
+  //
+  // 개별 쌍극자: p_j = α·E₀·x̂·exp(i k z_j),  **α = alphaTotal/N** (개별 분극률).
+  // alphaTotal을 그대로 곱하면 N²배(n_d=20에서 약 1.8e7배) 어긋난다.
+  //
+  // 반환: { radiation, induction, static } — 각각 {ex, ey, ez}, 각 성분 {re, im}.
+  // 항목 8이 항별로 검증하므로 합치지 않고 분리해 반환한다.
+  function scatteredFieldAt(obsPoint, grid, k, alphaTotal) {
+    var points = grid.points;
+    var N = grid.N;
+    var alpha = alphaTotal / N;
+
+    var acc = {
+      radiation: { ex: { re: 0, im: 0 }, ey: { re: 0, im: 0 }, ez: { re: 0, im: 0 } },
+      induction: { ex: { re: 0, im: 0 }, ey: { re: 0, im: 0 }, ez: { re: 0, im: 0 } },
+      static: { ex: { re: 0, im: 0 }, ey: { re: 0, im: 0 }, ez: { re: 0, im: 0 } }
+    };
+    var termNames = ['radiation', 'induction', 'static'];
+    var compNames = ['ex', 'ey', 'ez'];
+
+    for (var j = 0; j < points.length; j++) {
+      var p = points[j];
+      var kern = dipoleFieldKernel(obsPoint.x - p.x, obsPoint.y - p.y, obsPoint.z - p.z, k);
+
+      // 구동 진폭 α·exp(i k z_j)
+      var da = alpha * Math.cos(k * p.z);
+      var db = alpha * Math.sin(k * p.z);
+
+      for (var t = 0; t < 3; t++) {
+        var tn = termNames[t];
+        for (var m = 0; m < 3; m++) {
+          var cn = compNames[m];
+          var v = kern[tn][cn];
+          // 복소수 곱: (re + i·im)·(da + i·db)
+          acc[tn][cn].re += v.re * da - v.im * db;
+          acc[tn][cn].im += v.re * db + v.im * da;
+        }
+      }
+    }
+
+    return acc;
+  }
+
+  // UI 전용 최적화: 관측점이 xz 평면(y_obs = 0) 위에 있을 때의 산란 근접장.
+  //
+  // [y 대칭 — 이 함수 안에서 쓰는 유일한 대칭]
+  //   dy = −y_j 이고, 커널의 E_x·E_z 성분은 dy에 대해 짝함수(V1x, V1z, V2x, V2z가
+  //   uy를 짝수 번만 포함), E_y 성분은 홀함수다. 격자가 y_j ↔ −y_j로 짝지어져
+  //   있고 구동 위상 exp(i k z_j)는 z에만 의존하므로 짝의 진폭이 같다.
+  //   따라서 y_j > 0인 쌍극자만 돌고 E_x, E_z에 2배 하면 정확하다(근사 아님).
+  //   E_y는 상쇄되어 항상 0이므로 계산도 반환도 하지 않는다.
+  //   셀 중심 배치라 y=0 격자점이 존재하지 않으므로 이중 계산 위험이 없다.
+  //
+  // [x 대칭은 여기에 넣지 않는다 — 넣으면 틀린다]
+  //   관측점 x_o가 고정된 상태에서 dx = x_o − x_j 와 x_o − (−x_j) = x_o + x_j 는
+  //   부호만 다른 관계가 아니다(x_o = 0에서만 성립). 실제로 성립하는 것은
+  //   전체 합에 대한 관계이며,
+  //     E_x(−x_o, z_o) = +E_x(x_o, z_o),  E_z(−x_o, z_o) = −E_z(x_o, z_o)
+  //   커널이 dx에 대해 E_x는 짝함수·E_z는 홀함수라는 성질과, 격자가 x→−x
+  //   대칭이라는 조건이 함께 있어야 성립한다. 단일 관측점을 받는 이 함수는
+  //   관측점 쌍을 만들 수 없으므로, x 대칭은 호출자(렌더 루프)가 적용한다.
+  //   (비구형 산란체로 확장하면 후자가 깨지므로 이 최적화도 무효가 된다.)
+  //
+  // α = alphaTotal/N (개별 분극률) — scatteredFieldAt과 동일.
+  //
+  // 반환: { radiation:{ex,ez}, induction:{ex,ez}, static:{ex,ez} } (각 {re,im}).
+  //   세 항을 항상 함께 반환한다 — 화면 점마다 세 항을 캐싱해야 (B)의
+  //   [전체]/[복사]/[유도]/[정전] 토글이 재계산 없이 표시만 바꾸는 일이 된다.
+  //   opts.term('full'|'radiation'|'induction'|'static')을 주면 그 항의 합을
+  //   최상위 {ex, ez}로도 함께 실어 준다(단일 지점 조회 편의용).
+  function scatteredFieldXZPlane(xObs, zObs, grid, k, alphaTotal, opts) {
+    opts = opts || {};
+    var points = grid.points;
+    var N = grid.N;
+    var alpha = alphaTotal / N;
+
+    var radExRe = 0, radExIm = 0, radEzRe = 0, radEzIm = 0;
+    var indExRe = 0, indExIm = 0, indEzRe = 0, indEzIm = 0;
+    var staExRe = 0, staExIm = 0, staEzRe = 0, staEzIm = 0;
+
+    for (var j = 0; j < points.length; j++) {
+      var p = points[j];
+      if (p.y <= 0) continue; // y>0 절반만 순회하고 마지막에 2배
+
+      var dx = xObs - p.x;
+      var dy = -p.y;
+      var dz = zObs - p.z;
+
+      var kern = dipoleFieldKernel(dx, dy, dz, k);
+
+      var da = alpha * Math.cos(k * p.z);
+      var db = alpha * Math.sin(k * p.z);
+
+      var v;
+      v = kern.radiation.ex;
+      radExRe += v.re * da - v.im * db;
+      radExIm += v.re * db + v.im * da;
+      v = kern.radiation.ez;
+      radEzRe += v.re * da - v.im * db;
+      radEzIm += v.re * db + v.im * da;
+
+      v = kern.induction.ex;
+      indExRe += v.re * da - v.im * db;
+      indExIm += v.re * db + v.im * da;
+      v = kern.induction.ez;
+      indEzRe += v.re * da - v.im * db;
+      indEzIm += v.re * db + v.im * da;
+
+      v = kern.static.ex;
+      staExRe += v.re * da - v.im * db;
+      staExIm += v.re * db + v.im * da;
+      v = kern.static.ez;
+      staEzRe += v.re * da - v.im * db;
+      staEzIm += v.re * db + v.im * da;
+    }
+
+    var result = {
+      radiation: {
+        ex: { re: 2 * radExRe, im: 2 * radExIm },
+        ez: { re: 2 * radEzRe, im: 2 * radEzIm }
+      },
+      induction: {
+        ex: { re: 2 * indExRe, im: 2 * indExIm },
+        ez: { re: 2 * indEzRe, im: 2 * indEzIm }
+      },
+      static: {
+        ex: { re: 2 * staExRe, im: 2 * staExIm },
+        ez: { re: 2 * staEzRe, im: 2 * staEzIm }
+      }
+    };
+
+    if (opts.term) {
+      if (opts.term === 'full') {
+        result.ex = {
+          re: result.radiation.ex.re + result.induction.ex.re + result.static.ex.re,
+          im: result.radiation.ex.im + result.induction.ex.im + result.static.ex.im
+        };
+        result.ez = {
+          re: result.radiation.ez.re + result.induction.ez.re + result.static.ez.re,
+          im: result.radiation.ez.im + result.induction.ez.im + result.static.ez.im
+        };
+      } else {
+        result.ex = result[opts.term].ex;
+        result.ez = result[opts.term].ez;
+      }
+    }
+
+    return result;
+  }
+
   return {
     chooseNd: chooseNd,
     buildDipoleGrid: buildDipoleGrid,
@@ -288,7 +521,10 @@ var RGD = (function () {
     gaussLegendreNodes: gaussLegendreNodes,
     dSigmaDOmega: dSigmaDOmega,
     sigma1D: sigma1D,
-    sigma2D: sigma2D
+    sigma2D: sigma2D,
+    dipoleFieldKernel: dipoleFieldKernel,
+    scatteredFieldAt: scatteredFieldAt,
+    scatteredFieldXZPlane: scatteredFieldXZPlane
   };
 })();
 

@@ -1,7 +1,7 @@
 # RGD 근접장 시각화 — 설계 (2단계: 2행×3열 패널 UI)
 
 - 날짜: 2026-07-26
-- 범위: `physics.js` 확장(근접장 함수) + `verify.js` 항목 7·8 추가 + `index.html`/`style.css`/`script.js` (탐색 화면만). **논문 출력 모드(3행×2열 전치, λ_A/λ_B 비교)는 범위 밖 — 별도 세션.**
+- 범위: `physics.js` 확장(근접장 함수) + `verify.js` 항목 7·8·9 추가 + `index.html`/`style.css`/`script.js` (탐색 화면만). **논문 출력 모드(3행×2열 전치, λ_A/λ_B 비교)는 범위 밖 — 별도 세션.**
 - 원본 지시: 이번 세션 브레인스토밍 대화 전문(사용자가 준 상세 프롬프트 + 보강 6건)
 - 전제: 1단계(`physics.js`/`verify.js`, [`2026-07-25-rgd-scattering-design.md`](./2026-07-25-rgd-scattering-design.md))는 완료·검증됨. σ/G 계산 경로(`sigma1D`/`sigma2D`, `nd=20`)는 **건드리지 않는다** — 이번 단계는 표시 전용 근접장 계산을 별도로 추가한다.
 
@@ -41,7 +41,7 @@ E(R) = exp(ikR)/R · { k²[p̂ − R̂(R̂·p̂)] + [3R̂(R̂·p̂) − p̂]·(1
 | 함수 | 역할 | 비고 |
 |---|---|---|
 | `RGD.dipoleFieldKernel(dx, dy, dz, k)` | 위 커널. §2.1의 세 항을 **분리된 필드**로 반환: `{ radiation: {ex,ey,ez}, induction: {ex,ey,ez}, static: {ex,ey,ez} }` (각 성분 `{re,im}`). 합쳐서 전체 장을 만드는 건 호출자 책임 | 순수 함수. `p̂=x̂`만 지원(이 시뮬레이션에서 유일하게 필요한 방향) |
-| `RGD.scatteredFieldAt(obsPoint, grid, k, alphaTotal)` | 브루트포스 전체 합(대칭 최적화 없음). `p_j = (alphaTotal/N)·exp(ikz_j)`를 커널에 곱해 전체 grid.points에 대해 합산. 세 항을 각각 누적해 `{ radiation, induction, static }` 구조 그대로 반환(각 `{ex,ey,ez}`, 각 성분 `{re,im}`) | `verify.js` 항목 7·8 전용. 임의의 3D 관측점 지원. 항목 8이 항별로 검증하므로 합치지 않고 분리 반환 |
+| `RGD.scatteredFieldAt(obsPoint, grid, k, alphaTotal)` | 브루트포스 전체 합(대칭 최적화 없음). `p_j = (alphaTotal/N)·exp(ikz_j)`를 커널에 곱해 전체 grid.points에 대해 합산. 세 항을 각각 누적해 `{ radiation, induction, static }` 구조 그대로 반환(각 `{ex,ey,ez}`, 각 성분 `{re,im}`) | `verify.js` 항목 7·8·9a 전용. 임의의 3D 관측점 지원. 항목 8이 항별로 검증하므로 합치지 않고 분리 반환 |
 | `RGD.scatteredFieldXZPlane(xObs, zObs, grid, k, alphaTotal, opts)` | UI 전용 최적화. **`y>0` 쌍극자만 순회**(2배 절감 — 다이폴 루프 내부). `opts.term`으로 `'full'\|'radiation'\|'induction'\|'static'` 선택. `{ex, ez}` 반환(`ey`는 관측점이 xz평면 위에 있다는 전제로 항상 0, 함수 주석에 명시) | y 대칭만 쓴다. **x 대칭은 이 함수 안에 넣지 않는다** — 단일 관측점을 받는 함수라 관측점 쌍을 만들 수 없다. x 대칭은 호출자(렌더 루프, script.js)의 몫 — §4 참고. `scatteredFieldAt`은 검증용이므로 대칭 최적화 없이 그대로 둔다 |
 
 `alpha` = `alphaTotal/N` (개별 분극률) — **`alphaTotal`을 그대로 커널에 곱하면 안 된다.** 세 함수 모두 주석에 이 구분을 명시한다(1단계의 "편광 인자 이중 계산 금지" 주석과 같은 성격의 방어적 주석).
@@ -62,7 +62,7 @@ E(R) = exp(ikR)/R · { k²[p̂ − R̂(R̂·p̂)] + [3R̂(R̂·p̂) − p̂]·(1
 
 y 대칭(2배, 다이폴 루프)과 x 대칭(2배, 관측 루프)을 곱하면 4배 절감 — 단, 서로 다른 두 루프에서 각각 나온다.
 
-## 3. verify.js 항목 7·8
+## 3. verify.js 항목 7·8·9
 
 ### 항목 7 — 원거리 한계 (복사항 검증)
 
@@ -106,7 +106,20 @@ y 대칭(2배, 다이폴 루프)과 x 대칭(2배, 관측 루프)을 곱하면 4
 
 - 항목 7(`kR≫1`)과 항목 8(`kR≪1`)이 양쪽 극한을 조이고, (8b)가 중간 차수인 유도항의 k 스케일링을 직접 고정한다.
 
-**항목 7·8을 모두 통과해야 1행 UI 구현으로 넘어가고, 1행 UI가 끝나야 2행 재배치로 넘어간다** (사용자 지시 그대로).
+### 항목 9 — UI 최적화 경로(대칭) 검증
+
+항목 7·8은 `scatteredFieldAt`(브루트포스)만 검증한다. 정작 화면을 그리는 `scatteredFieldXZPlane`(y 대칭)과 렌더 루프의 x 거울 관계는 아무것도 검증하지 않아, 나중에 성능 최적화를 건드릴 때 조용히 깨질 수 있다.
+
+- **(9a) y 대칭 최적화**: `scatteredFieldXZPlane(x, z, …)`와 `scatteredFieldAt({x, 0, z}, …)`의 `(ex, ez)` 비교. 여러 `(x, z)`와 `x = 2.0`·`0.0063` 양쪽에서.
+- **(9b) x 거울 관계**: `scatteredFieldXZPlane(+x, z)`와 `(−x, z)`를 비교해 `E_x(−x) = +E_x(x)`, `E_z(−x) = −E_z(x)`가 성립하는지.
+- **임계값은 1e-12가 아니라 `1e-10`.** 두 경로는 덧셈 순서가 달라 약 1400항 합산에서 반올림 잡음이 `2e-13`까지 올라간다 — 1e-12는 여유가 5배뿐이라 오검출 위험이 있다. 느슨하게 잡아도 잃는 것이 없다: 대칭 버그는 미묘하지 않아서 `×2` 누락은 정확히 2배, 부호 오류는 200% 어긋난다. **`1e-13`(반올림 잡음)과 실제 버그(`O(1)`) 사이가 텅 비어 있다.**
+- 규격화 주의: 성분 하나가 대칭 때문에 정확히 0이 되는 지점이 있으므로(예: `x=0`에서 `E_z=0`) 성분별 상대 오차는 정의되지 않는다. **항별 최대 크기로 규격화**한다.
+
+> **(9b)의 한계 — 반드시 인지할 것**: x 대칭은 `script.js` 렌더 루프에 있으므로 Node인 `verify.js`가 직접 검증할 수 없다. **(9b)가 검증하는 것은 관계식 자체이지, 렌더 루프가 그것을 올바로 적용했는지가 아니다.** 렌더 루프의 부호 실수는 아래 런타임 어서션으로 잡는다.
+>
+> **런타임 어서션**: `script.js`에 개발용 플래그 `DEBUG_SYMMETRY`(기본값 `false`)를 둔다. `true`일 때, 미러링으로 채운 열 중 하나를 `scatteredFieldXZPlane`으로 직접 계산해 비교하고 상대 편차가 `1e-10`을 넘으면 `console.warn`. 기본값이 `false`이므로 성능에 영향이 없다.
+
+**항목 7·8·9를 모두 통과해야 1행 UI 구현으로 넘어가고, 1행 UI가 끝나야 2행 재배치로 넘어간다** (사용자 지시 그대로).
 
 ## 4. 표시 격자·마스킹·성능
 
@@ -217,7 +230,7 @@ grid-template-rows: 250px 340px;   /* 뷰포트에 따라 비율 유지하며 �
 ## 8. 구현 순서
 
 1. `physics.js`: `dipoleFieldKernel`, `scatteredFieldAt`, `scatteredFieldXZPlane` 구현
-2. `verify.js` 항목 7·8 추가 → **PASS 확인 전 다음 단계로 안 넘어감**
+2. `verify.js` 항목 7·8·9 추가 → **PASS 확인 전 다음 단계로 안 넘어감**
 3. 1행 (A)(B)(C) UI 구현. 마스크 반경은 미리보기 스크린샷으로 사용자 확인 후 확정
 4. 2행 (D)(E)(F) 재배치 + (E)-(F) θ 연동
 5. 전체 레이아웃 스크롤 없음 확인, 반응형 점검
