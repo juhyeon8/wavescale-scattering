@@ -49,10 +49,10 @@
 
     <div class="ctl-group" data-tab="1">
       <label class="lock"><input type="checkbox" id="arrowBox" checked> 화살표 표시</label>
-      <span class="ctl-label">표시 범위</span>
+      <span class="ctl-label">화면 축척</span>
       <select id="rangeSelect">
+        <option value="a">a 기준 (고정 자)</option>
         <option value="lambda">λ 기준 (z = 3λ)</option>
-        <option value="a">a 기준 (z = 16a)</option>
       </select>
       <span class="ctl-label">산란파 배율</span>
       <select id="scaleSelect">
@@ -95,9 +95,11 @@
         <h3>(A) 입사파</h3>
         <p>+z 방향으로 진행하는 x축 편광 평면파 <code>Re(E_x) = cos(kz − ωt)</code>입니다.
         색 스케일은 진폭 1로 고정되며 (B)(C)와 공유합니다.</p>
-        <p>표시 범위가 λ 기준(z = 3λ)이므로 <strong>λ를 바꿔도 이 줄은 변하지 않습니다.</strong>
-        늘 마루가 세 개 보입니다. 변하는 것은 아래 (B) 하나뿐이고, 입자는 λ에 비해
-        점점 작은 점이 되어 λ/a 가 화면에서 직접 읽힙니다.</p>
+        <p>화면 축척이 a 기준이라 <strong>화면은 λ와 무관한 고정된 자입니다.</strong>
+        파장을 늘리면 줄무늬 간격이 그만큼 넓어지고, 물체는 늘 같은 크기의
+        작은 표식으로 남습니다. 물체 내부 구조는 오른쪽 (D)가 맡습니다.</p>
+        <p>'λ 기준'으로 바꾸면 화면이 λ에 딸려 늘어나 이 줄이 λ와 무관하게
+        똑같아집니다 — 변하는 것이 (B) 하나뿐인 비교를 하고 싶을 때 씁니다.</p>
         <p>화면 주기는 λ와 무관하게 2초로 고정합니다. 실제 ω를 쓰면 21cm 전파에서는
         멈춰 보이고 가시광선에서는 폭주하기 때문입니다.</p>
       </div>

@@ -18,20 +18,35 @@
   // 2행 (D)(E)는 이 값이 아니라 물리 격자 nd=20 을 쓴다.
   var ND_DISPLAY = 14;
 
-  // 표시 범위는 λ 기준이 기본이다: z 범위 = 3λ 고정.
-  // 그러면 λ를 바꿔도 (A) 입사파 줄이 언제나 똑같이 생기고(마루 세 개),
-  // 변하는 것이 (B) 하나뿐이라 원인과 결과가 분리되어 보인다. 동시에 입자는
-  // λ에 비해 점점 작은 점이 되어 λ/a 가 화면에서 직접 읽힌다.
-  var RANGE_LAMBDA_Z = 3;  // z 범위 = 3λ
-  var RANGE_A_Z = 16;      // 'a 기준' 토글: z ∈ [−8a, 8a]
+  // --- 화면 축척 ---------------------------------------------------------
+  // 기본은 'a' 기준이다. 화면이 λ와 무관한 "고정된 자"가 되므로
+  //   · 파장이 길어지면 줄무늬 간격이 실제로 넓어져 보이고
+  //   · 물체는 어떤 λ/a 에서도 같은 크기로 남아 잘리지 않는다.
+  // 'lambda' 는 이전 동작(z 범위 = 3λ)을 그대로 보존한 되돌리기용 모드다.
+  var SCALE_MODE = 'a'; // 'a' | 'lambda'
+
+  // 'a' 모드의 x(세로) 반범위. 값이 곧 물체의 화면 크기를 정한다:
+  // 물체 지름 3a 가 패널 높이(2·X_HALF)의 3/(2·X_HALF) 를 차지하므로,
+  // "지름 ≤ 패널 높이의 20%" 를 만족하려면 X_HALF ≥ 7.5 여야 한다.
+  // 8 이면 18.75% 로 여유가 조금 남는다.
+  var SCALE_A_HALF = 8;
+
+  var RANGE_LAMBDA_Z = 3; // 'lambda' 모드: z 범위 = 3λ
+
+  // 필드 패널의 물체는 위치 표식일 뿐이다 — 내부 구조는 (D)가 전담한다.
+  // 화면 축척과 무관하게 지름의 상한을 둬 어떤 경우에도 상하로 잘리지 않게 한다.
+  var RENDER_OBJECT_MAX_FRAC = 0.20;
+  var OBJECT_MARKER = 'dot'; // 'dot' | 'circle' | 'vline'
 
   // 화면 격자는 패널 가로세로비에 맞춰 자동 산출한다(픽셀 정사각형 유지).
   //   NZ * NX ≈ TOTAL_SAMPLES,  NZ / NX ≈ aspect
-  var TOTAL_SAMPLES = 8000;
-  var Z_HALF = 7.5; // a 단위. updateGridDims/λ 에 따라 다시 잡힌다
-  var X_HALF = 1.1;
-  var NZ = 216;
-  var NX = 36;      // 짝수여야 x 거울 대칭(절반만 계산)이 성립한다
+  // 'a' 모드는 z 범위가 100a 로 넓어 한 파장에 배정되는 표본이 줄어든다.
+  // λ/a = π 에서도 파장당 10 표본 이상이 되도록 표본 수를 올렸다.
+  var TOTAL_SAMPLES = 20000;
+  var Z_HALF = 50; // a 단위. updateGeometry 가 다시 잡는다
+  var X_HALF = 8;
+  var NZ = 352;
+  var NX = 56;      // 짝수여야 x 거울 대칭(절반만 계산)이 성립한다
 
   // 마스크 반경은 1.5a로 고정한다 — 축소하지 않는다.
   // nd_display=14, 셀 중심 배치이므로 최외곽 쌍극자는 r ≈ 0.93~1.00a 에 있다.
@@ -106,7 +121,6 @@
   // 배율 기본값은 ×1 이다. 자동 배율이면 λ를 늘려도 (B)가 늘 비슷하게 보여서
   // "산란파가 약해진다"는 메시지가 통째로 사라진다.
   var scaleMode = '1';
-  var rangeMode = 'lambda';
   var showArrows = true;
   // 지표는 기본 숨김. 켠 상태는 세션 동안 유지된다(λ를 바꿔도 꺼지지 않는다).
   var showMetrics = false;
@@ -152,8 +166,6 @@
   // 표시 범위와 화면 격자를 현재 패널 크기·λ 에 맞춰 다시 잡는다.
   // 반환값은 "격자 칸 수가 바뀌었는가" — 바뀌었으면 장을 다시 계산해야 한다.
   function updateGeometry() {
-    Z_HALF = (rangeMode === 'lambda' ? RANGE_LAMBDA_Z * lambdaOverA() : RANGE_A_Z) / 2;
-
     var body = document.querySelector('#panelA .body');
     var w = body ? body.clientWidth : 0;
     var h = body ? body.clientHeight : 0;
@@ -171,8 +183,15 @@
       }
     }
 
-    // 픽셀이 정사각형이 되도록 x 범위를 z 범위에서 유도한다
-    X_HALF = (Z_HALF * NX) / NZ;
+    // 두 모드 모두 z·x 가 같은 축척을 공유한다(픽셀 정사각형). 한쪽을 정하면
+    // 다른 쪽은 격자 칸 수 비로 따라온다 — 비등방 늘림은 없다.
+    if (SCALE_MODE === 'a') {
+      X_HALF = SCALE_A_HALF;              // λ와 무관한 고정 자
+      Z_HALF = (X_HALF * NZ) / NX;
+    } else {
+      Z_HALF = (RANGE_LAMBDA_Z * lambdaOverA()) / 2;
+      X_HALF = (Z_HALF * NX) / NZ;
+    }
     hz = (2 * Z_HALF) / NZ;
     hx = (2 * X_HALF) / NX;
     return changed;
@@ -546,32 +565,44 @@
     ctx.restore();
   }
 
-  // 입자 표시. λ 기준 축척에서는 λ/a 가 커질수록 몇 픽셀짜리 점이 되므로
-  // 최소 2px(반지름 1px)는 그려서 입자 위치가 늘 보이게 한다.
+  // 필드 패널의 물체는 위치 표식이다. 내부 구조(쌍극자 배열·위상)는 (D) 담당이므로
+  // 여기서는 그리지 않는다.
+  //
+  // 물리 반경은 그대로 1.5a 지만, 화면에 그리는 크기에는 상한을 둔다 —
+  // 어떤 축척·어떤 λ/a 에서도 패널 상하로 잘리지 않아야 한다.
+  // 회색 원 자체는 "값이 없는 영역"이기도 하다(마스크 안은 계산을 생략한다).
   function drawParticle(v) {
     var ctx = v.ctx;
     var px = v.zToPx(0);
     var py = v.xToPx(0);
-    var rpx = Math.max(v.zToPx(MASK_R) - px, 1);
+    var rTrue = v.zToPx(MASK_R) - px;
+    var rCap = (RENDER_OBJECT_MAX_FRAC * v.box.h) / 2;
+    var rpx = Math.min(Math.max(rTrue, 1.5), rCap);
 
     ctx.save();
-    ctx.beginPath();
-    ctx.arc(px, py, rpx, 0, 2 * Math.PI);
-    ctx.fillStyle = 'rgb(176,176,176)';
-    ctx.fill();
-    if (rpx >= 3) {
+    if (OBJECT_MARKER === 'vline') {
       ctx.strokeStyle = '#8c8c8c';
-      ctx.lineWidth = 1;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(px, py - rpx);
+      ctx.lineTo(px, py + rpx);
       ctx.stroke();
-    }
-    // 안내 문구는 원이 충분히 클 때만 (작으면 글자가 원 밖으로 삐져나온다)
-    if (rpx >= 34) {
-      ctx.font = '10px "Malgun Gothic", sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillStyle = '#fff';
-      ctx.fillText('모형 적용', px, py - 6);
-      ctx.fillText('범위 밖', px, py + 6);
+    } else {
+      ctx.beginPath();
+      ctx.arc(px, py, rpx, 0, 2 * Math.PI);
+      if (OBJECT_MARKER === 'circle') {
+        ctx.strokeStyle = '#8c8c8c';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      } else {
+        ctx.fillStyle = 'rgb(176,176,176)';
+        ctx.fill();
+        if (rpx >= 3) {
+          ctx.strokeStyle = '#8c8c8c';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
+      }
     }
     ctx.restore();
   }
@@ -1432,10 +1463,10 @@
     render();
   });
 
-  // 표시 범위 — λ 기준(기본) ↔ a 기준. 범위가 바뀌면 표본 위치가 달라지므로
+  // 화면 축척 — a 기준(기본) ↔ λ 기준. 축척이 바뀌면 표본 위치가 달라지므로
   // 다시 그리는 것으로는 안 되고 장을 재계산해야 한다.
   document.getElementById('rangeSelect').addEventListener('change', function () {
-    rangeMode = this.value;
+    SCALE_MODE = this.value;
     recompute();
   });
 
