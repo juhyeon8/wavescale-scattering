@@ -34,7 +34,7 @@ body {
   padding: 6px 10px;
   background: #fff;
   border: 1px solid #ddd;
-  border-radius: 0 4px 4px 4px;
+  border-radius: 4px;
 }
 
 .ctl-row {
@@ -150,28 +150,36 @@ select {
   min-width: 60px;
 }
 
-/* ---------------- 탭 ---------------- */
+/* ---------------- 접이식 상세 보기 ----------------
+   (E)(F)는 논문 논증에 필요하지 않아 접이식으로 강등했다(삭제 아님).
+   펼쳤을 때 높이를 고정값으로 두어야 주 화면 3단이 예측 가능하게 줄어든다 —
+   비율로 두면 판독창 글자 수가 바뀔 때처럼 높이가 흔들린다. */
 
-.tabs {
+#detail {
   flex: none;
-  display: flex;
-  gap: 4px;
-}
-
-.tab-btn {
-  font: inherit;
-  font-size: 12.5px;
-  padding: 6px 14px;
+  background: #fff;
   border: 1px solid #ddd;
-  border-bottom: none;
-  border-radius: 4px 4px 0 0;
-  background: #f0f0f0;
-  color: #666;
-  cursor: pointer;
+  border-radius: 4px;
 }
 
-.tab-btn:hover { background: #e8eff6; }
-.tab-btn.on { background: #fff; color: #1a1a1a; font-weight: 700; border-color: #ccc; }
+#detail > summary {
+  cursor: pointer;
+  padding: 6px 10px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #555;
+  list-style: none;
+}
+
+#detail > summary::-webkit-details-marker { display: none; }
+#detail > summary::before { content: "▸ "; color: #999; }
+#detail[open] > summary::before { content: "▾ "; }
+#detail > summary:hover { color: #2f6f9f; }
+
+#detailPanels {
+  height: 340px;
+  padding: 0 8px 8px;
+}
 
 /* ---------------- 패널 격자 ----------------
    탭 1은 2×2 균등. 각 패널이 자기 셀 안에서 letterbox 하므로
@@ -212,10 +220,15 @@ select {
   gap: 6px;
 }
 
+/* 정사각형을 폭에 고정하면(aspect-ratio) 상세 보기를 펼쳐 칸이 낮아졌을 때
+   범례가 캡션 위로 넘친다. 남는 높이를 가져가게 두고, 실제 정사각형 유지는
+   blitSquare 가 min(폭, 높이) 로 처리하게 맡긴다. */
 #panelD .plot-square {
-  flex: none;
-  height: auto;
+  flex: 1;
+  min-height: 0;
   width: 100%;
+  height: auto;
+  aspect-ratio: auto;
 }
 
 #panelD .legend { flex: none; }
@@ -228,11 +241,14 @@ select {
   grid-template-rows: 1fr;
 }
 
-.panels[hidden] { display: none; }
+/* 주 화면은 남는 높이를 전부 가져간다. 상세 보기를 펼치면 그 고정 높이만큼
+   줄어들되, 세 줄은 계속 균등 분할이라 정렬이 흐트러지지 않는다. */
+#mainPanels { flex: 1; min-height: 0; }
 
 .panel {
   min-width: 0;
   min-height: 0;
+  overflow: hidden; /* 어떤 칸 높이에서도 이웃 패널을 침범하지 않게 */
   display: flex;
   flex-direction: column;
   background: #fff;

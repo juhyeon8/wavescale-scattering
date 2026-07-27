@@ -116,7 +116,7 @@
   function alphaTotal() { return POLARIZABILITY_FACTOR * aUm * aUm * aUm; }
 
   var theta = Math.PI / 2; // (E)(F) 전용 θ. 탭 2 진입 시 기본 90°
-  var activeTab = 1;       // a·λ 는 두 탭이 공유한다(탭을 바꿔도 유지)
+  var detailOpen = false;  // 상세 보기(산란 패턴·위상자 합) 펼침 여부
   var term = 'full';
   // 배율 기본값은 ×1 이다. 자동 배율이면 λ를 늘려도 (B)가 늘 비슷하게 보여서
   // "산란파가 약해진다"는 메시지가 통째로 사라진다.
@@ -711,14 +711,14 @@
   // 그리기
   // ---------------------------------------------------------------------
 
-  // 숨은 탭의 캔버스는 clientWidth = 0 이라 그릴 수 없다. 활성 탭만 그리고,
-  // 탭을 전환할 때 그 탭을 다시 그린다.
+  // 접혀 있는 상세 보기의 캔버스는 clientWidth = 0 이라 그릴 수 없다.
+  // 펼쳐져 있을 때만 그린다(펼치는 순간 toggle 에서 다시 그린다).
   function render() {
-    if (activeTab === 1) renderTab1();
-    else renderTab2();
+    renderMain();
+    if (detailOpen) renderDetail();
   }
 
-  function renderTab2() {
+  function renderDetail() {
     var k = waveK();
     renderPhasorSum(k);
     renderScatterPattern();
@@ -726,11 +726,11 @@
 
   // 세 줄은 같은 z축·같은 색 스케일·같은 픽셀 크기를 공유한다.
   // 프레임마다 하는 일은 Re·cos(ωt) + Im·sin(ωt) 곱셈뿐이다.
-  function renderTab1() {
+  function renderMain() {
     var k = waveK();
     var c = Math.cos(animPhase), s = Math.sin(animPhase);
 
-    var srcA = paint('A', function (p) { return incidentRe[p] * c + incidentIm[p] * s; });
+    var srcA = paint('incident', function (p) { return incidentRe[p] * c + incidentIm[p] * s; });
     var vA = blit(document.getElementById('canvasA'), srcA);
     if (vA) {
       drawParticle(vA);
@@ -742,7 +742,7 @@
 
     var mag = currentScale();
     var fr = fieldRe[term], fi = fieldIm[term];
-    var srcB = paint('B', function (p) { return (fr[p] * c + fi[p] * s) * mag; });
+    var srcB = paint('scattered', function (p) { return (fr[p] * c + fi[p] * s) * mag; });
     var vB = blit(document.getElementById('canvasB'), srcB);
     if (vB) {
       drawParticle(vB);
@@ -755,7 +755,7 @@
     // (C)는 항상 세 항을 모두 합친 원본값(배율 1)으로 계산한다.
     // 배율이 걸린 산란파를 더하면 (C)가 물리적으로 무의미해진다.
     var cr = fieldRe.full, ci = fieldIm.full;
-    var srcC = paint('C', function (p) {
+    var srcC = paint('total', function (p) {
       return (incidentRe[p] + cr[p]) * c + (incidentIm[p] + ci[p]) * s;
     });
     var vC = blit(document.getElementById('canvasC'), srcC);
@@ -1351,7 +1351,7 @@
   // 의존하므로 재계산이 필요 없다. 그래서 change가 아니라 input에서 즉시
   // 반응해도 무리가 없다.
   function renderThetaOnly() {
-    renderTab2();
+    renderDetail();
   }
 
   // ---------------------------------------------------------------------
@@ -1487,31 +1487,16 @@
     if (!animating) render();
   });
 
-  // 탭 전환 — λ/a 는 두 탭이 공유하므로 재계산 없이 다시 그리기만 한다.
-  var tabButtons = document.querySelectorAll('.tab-btn');
-  function setTab(n) {
-    activeTab = n;
-    for (var i = 0; i < tabButtons.length; i++) {
-      tabButtons[i].classList.toggle('on', parseInt(tabButtons[i].getAttribute('data-tab'), 10) === n);
-    }
-    document.getElementById('tab1').hidden = (n !== 1);
-    document.getElementById('tab2').hidden = (n !== 2);
-    var groups = document.querySelectorAll('.ctl-group[data-tab]');
-    for (var j = 0; j < groups.length; j++) {
-      groups[j].hidden = parseInt(groups[j].getAttribute('data-tab'), 10) !== n;
-    }
-    // 열려 있던 ⓘ는 닫는다(다른 탭의 것이 남아 있으면 혼란스럽다)
-    var overlays = document.querySelectorAll('.info-overlay');
-    for (var q = 0; q < overlays.length; q++) overlays[q].hidden = true;
-    var ibtns = document.querySelectorAll('.info-btn');
-    for (var r = 0; r < ibtns.length; r++) ibtns[r].classList.remove('on');
-    render();
-  }
-  for (var t = 0; t < tabButtons.length; t++) {
-    tabButtons[t].addEventListener('click', function () {
-      setTab(parseInt(this.getAttribute('data-tab'), 10));
-    });
-  }
+  // 상세 보기(산란 패턴·위상자 합) 접기/펼치기.
+  // 접혀 있는 동안은 캔버스 clientWidth 가 0 이라 그릴 수 없으므로 건너뛰고,
+  // 펼칠 때 그린다. 주 화면 3단이 그만큼 줄어들어 화면 격자 칸 수가 바뀌므로
+  // 다시 그리는 것만으로는 안 되고 장을 재계산해야 한다.
+  var detail = document.getElementById('detail');
+  detail.addEventListener('toggle', function () {
+    detailOpen = detail.open;
+    if (updateGeometry()) recompute();
+    else render();
+  });
 
   // 방향(θ)은 슬라이더가 아니라 산란 패턴 위를 클릭·드래그해 고른다 —
   // "왼쪽 그래프의 한 점을 고르면 오른쪽이 그 방향의 위상자 합을 보여준다"가
@@ -1594,7 +1579,6 @@
   // ---------------------------------------------------------------------
 
   syncSliders();
-  setTab(1); // 탭 1이 기본. 컨트롤 그룹 표시 상태를 초기화한다
   recompute();
 
   // 최초 recompute 시점에 레이아웃이 아직 안 잡혀 clientWidth가 0이면 격자
