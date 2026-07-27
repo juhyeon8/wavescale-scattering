@@ -143,7 +143,6 @@
       <canvas id="canvasB"></canvas>
       <div class="badge" id="scaleBadge">×1</div>
       <div class="zone-badge" id="zoneBadge" hidden></div>
-      <div class="weak-badge" id="weakBadge" hidden></div>
       <div class="metrics-bar" id="metricsBar" hidden></div>
       <div class="info-overlay" id="infoB" hidden>
         <h3>산란파 — 세 항의 구성</h3>
@@ -172,7 +171,9 @@
         거리 차수만으로 정해지지 않기 때문입니다.</p>
       </div>
     </div>
-    <p class="caption">산란파 — 파장이 길수록 약해진다</p>
+    <!-- 안내 문구는 캡션 줄에 둔다. 필드 화면 위에 겹치면 배율 1배에서
+         "산란파가 거의 백지"라는 사실 자체를 문구가 가려 버린다. -->
+    <p class="caption">산란파 — 파장이 길수록 약해진다<span class="weak-badge" id="weakBadge" hidden></span></p>
   </section>
 
   <section class="panel" id="panelC">
