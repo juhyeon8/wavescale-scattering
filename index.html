@@ -12,80 +12,107 @@
   <button type="button" class="tab-btn" data-tab="2">산란파는 어느 방향으로 얼마나 가는가</button>
 </div>
 
+<!-- 컨트롤은 두 줄로 고정한다. 한 줄에 몰아넣으면 판독창 글자 수가 바뀔 때
+     줄바꿈이 일어나 패널 높이가 흔들린다(Phase 2에서 잡은 것과 같은 문제).
+     각 줄은 nowrap 이고, 남는 폭은 판독창만 흡수한다. -->
 <div class="controls">
-  <div class="ctl-group" data-tab="1">
-    <label for="aSlider">입자 반지름 a</label>
-    <input type="range" id="aSlider" min="0" max="1000" value="0">
-    <label for="lambdaSlider">파장 λ</label>
-    <input type="range" id="lambdaSlider" min="0" max="1000" value="0">
-    <label class="lock"><input type="checkbox" id="lockBox"> λ/a 고정</label>
+
+  <div class="ctl-row">
+    <div class="ctl-group" data-tab="1">
+      <label for="aSlider">입자 반지름 a</label>
+      <input type="range" id="aSlider" min="0" max="1000" value="0">
+      <label for="lambdaSlider">파장 λ</label>
+      <input type="range" id="lambdaSlider" min="0" max="1000" value="0">
+      <label class="lock"><input type="checkbox" id="lockBox"> λ/a 고정</label>
+    </div>
+
+    <div class="ctl-group presets" data-tab="1">
+      <button type="button" class="active" data-a="0.1" data-lambda="0.5">성간 티끌 + 가시광선</button>
+      <button type="button" data-a="0.1" data-lambda="2.1e5">성간 티끌 + 21cm 전파</button>
+    </div>
+
+    <span class="notice lock-notice" id="lockNotice" hidden></span>
+    <span class="notice range-notice" id="rangeNotice" hidden>λ/a &lt; π — 이 모형의 적용 범위 밖</span>
+
+    <span class="status" id="status"></span>
   </div>
 
-  <span class="readout" id="lambdaReadout"></span>
-  <span class="notice lock-notice" id="lockNotice" hidden></span>
-  <span class="notice range-notice" id="rangeNotice" hidden>λ/a &lt; π — 이 모형의 적용 범위 밖</span>
+  <div class="ctl-row">
+    <span class="readout" id="lambdaReadout"></span>
 
-  <div class="ctl-group presets" data-tab="1">
-    <button type="button" class="active" data-a="0.1" data-lambda="0.5">성간 티끌 + 가시광선</button>
-    <button type="button" data-a="0.1" data-lambda="2.1e5">성간 티끌 + 21cm 전파</button>
+    <div class="ctl-group" data-tab="1">
+      <button type="button" class="tool" id="playBtn">⏸ 정지</button>
+      <label for="speedSlider" class="ctl-label">속도</label>
+      <input type="range" id="speedSlider" min="0" max="1000" value="500">
+      <span class="ctl-label mono" id="speedReadout">1.00×</span>
+    </div>
+
+    <div class="ctl-group" data-tab="1">
+      <label class="lock"><input type="checkbox" id="arrowBox" checked> 화살표 표시</label>
+      <span class="ctl-label">표시 범위</span>
+      <select id="rangeSelect">
+        <option value="lambda">λ 기준 (z = 3λ)</option>
+        <option value="a">a 기준 (z = 16a)</option>
+      </select>
+      <span class="ctl-label">산란파 배율</span>
+      <select id="scaleSelect">
+        <option value="1">×1</option>
+        <option value="10">×10</option>
+        <option value="100">×100</option>
+        <option value="1000">×1000</option>
+        <option value="10000">×10000</option>
+        <option value="auto">자동</option>
+      </select>
+      <span class="ctl-label">표시 항</span>
+      <select id="termSelect">
+        <option value="full">전체</option>
+        <option value="radiation">복사</option>
+        <option value="induction">유도</option>
+        <option value="static">정전</option>
+      </select>
+    </div>
   </div>
 
-  <div class="ctl-group" data-tab="1">
-    <span class="ctl-label">(B) 표시 항</span>
-    <select id="termSelect">
-      <option value="full">전체</option>
-      <option value="radiation">복사</option>
-      <option value="induction">유도</option>
-      <option value="static">정전</option>
-    </select>
-    <span class="ctl-label">배율</span>
-    <select id="scaleSelect">
-      <option value="auto">자동</option>
-      <option value="1">×1</option>
-      <option value="10">×10</option>
-      <option value="100">×100</option>
-      <option value="1000">×1000</option>
-    </select>
-  </div>
-
-  <span class="status" id="status"></span>
 </div>
 
 <!-- ================= 탭 1 — 파동은 어떻게 통과하는가 =================
-     2×2 균등. 읽기 순서가 곧 인과 순서:
-       입사파가 들어와서 → 내부 전하를 흔들고 → 산란파를 내보내고 → 합쳐진다.
-     각 패널이 자기 셀 안에서 letterbox 하므로 (A)(B)(C)의 이미지 크기는
-     픽셀 단위로 동일하다. -->
+     (A)(B)(C)를 세로 3단으로 쌓는다. 같은 z축·같은 색 스케일·같은 픽셀 크기를
+     공유하므로 "입사파 + 산란파 = 합"이 눈으로 바로 비교된다.
+     오른쪽 (D)는 3단 전체 높이를 차지한다.
 
-<div class="panels grid2x2" id="tab1">
+     표시 범위는 λ 기준(z = 3λ)이 기본이다. 그래야 λ를 바꿔도 (A)가 늘 똑같이
+     생기고, 변하는 것이 (B) 하나뿐이라 원인과 결과가 분리되어 보인다. -->
 
-  <section class="panel">
-    <h2>(A) 입사파<span class="sub">Re(E_x), t=0</span>
+<div class="panels grid3plus1" id="tab1">
+
+  <section class="panel" id="panelA">
+    <h2>(A) 입사파
       <span class="tools"><button type="button" class="tool info-btn" data-info="infoA">ⓘ</button></span>
     </h2>
     <div class="body">
       <canvas id="canvasA"></canvas>
       <div class="info-overlay" id="infoA" hidden>
         <h3>(A) 입사파</h3>
-        <p>+z 방향으로 진행하는 x축 편광 평면파의 t=0 순간 스냅샷 <code>Re(E_x) = cos(kz)</code>입니다.
+        <p>+z 방향으로 진행하는 x축 편광 평면파 <code>Re(E_x) = cos(kz − ωt)</code>입니다.
         색 스케일은 진폭 1로 고정되며 (B)(C)와 공유합니다.</p>
-        <p>아래쪽 양방향 화살표가 파장 눈금입니다. 파장이 표시 범위(10a)보다 길면
-        화살표가 패널 밖으로 잘려 나가는데, <strong>그 잘림 자체가 "파장이 이 화면보다 크다"는
-        메시지</strong>입니다. 이때 화면이 거의 단색으로 보이는 것은 고장이 아니라
-        준정전기 영역의 정확한 결과입니다.</p>
+        <p>표시 범위가 λ 기준(z = 3λ)이므로 <strong>λ를 바꿔도 이 줄은 변하지 않습니다.</strong>
+        늘 마루가 세 개 보입니다. 변하는 것은 아래 (B) 하나뿐이고, 입자는 λ에 비해
+        점점 작은 점이 되어 λ/a 가 화면에서 직접 읽힙니다.</p>
+        <p>화면 주기는 λ와 무관하게 2초로 고정합니다. 실제 ω를 쓰면 21cm 전파에서는
+        멈춰 보이고 가시광선에서는 폭주하기 때문입니다.</p>
       </div>
     </div>
-    <p class="caption" id="captionA"></p>
+    <p class="caption" id="captionA">(A) 입사파</p>
   </section>
 
-  <section class="panel">
-    <h2>(D) 내부 전하의 진동<span class="sub">구동 위상 cos(k z)</span>
+  <section class="panel" id="panelD">
+    <h2>(D) 내부 전하의 진동<span class="sub">구동 위상 cos(k z − ωt)</span>
       <span class="tools"><button type="button" class="tool info-btn" data-info="infoD">ⓘ</button></span>
     </h2>
     <div class="body split">
       <div class="plot-square"><canvas id="canvasD"></canvas></div>
       <div class="legend">
-        <div class="lg-title">색 = cos(k·z)<span>그 자리의 전하가 흔들리는 위상</span></div>
+        <div class="lg-title">색 = cos(k·z − ωt)<span>그 자리의 전하가 흔들리는 위상</span></div>
         <div class="lg-bar"><i></i>
           <div class="lg-ticks"><span>−1</span><span>0</span><span>+1</span></div>
         </div>
@@ -104,11 +131,10 @@
         방향마다 다르게 나가는 원인입니다(탭 2).</p>
       </div>
     </div>
-    <p class="caption">파장이 길면 전체가 한 색 — 입자 안의 전하가 모두 같은 위상으로
-    함께 흔들린다 (논문 Ⅲ.2의 위상 균일성 ka ≪ 1).</p>
+    <p class="caption">(D) 파장이 길면 전체가 한 색 — 모두 같은 위상으로 흔들린다</p>
   </section>
 
-  <section class="panel">
+  <section class="panel" id="panelB">
     <h2>(B) 산란파<span class="sub" id="termLabel">전체</span>
       <span class="tools">
         <button type="button" class="tool" id="metricsBtn">수치</button>
@@ -119,6 +145,7 @@
       <canvas id="canvasB"></canvas>
       <div class="badge" id="scaleBadge">×1</div>
       <div class="zone-badge" id="zoneBadge" hidden></div>
+      <div class="weak-badge" id="weakBadge" hidden></div>
       <div class="metrics-bar" id="metricsBar" hidden></div>
       <div class="info-overlay" id="infoB" hidden>
         <h3>(B) 산란파 — 세 항의 구성</h3>
@@ -147,12 +174,11 @@
         거리 차수만으로 정해지지 않기 때문입니다.</p>
       </div>
     </div>
-    <p class="caption">멀리까지 나가는 것은 복사장뿐이다. 정전장과 유도장은 한 주기 안에
-    나갔다 되돌아오는 저장 에너지여서 알짜 전력을 실어 나르지 않는다.</p>
+    <p class="caption">(B) 산란파 — 파장이 길수록 약해진다</p>
   </section>
 
-  <section class="panel">
-    <h2>(C) 중첩 결과<span class="sub">입사파 + 산란파</span>
+  <section class="panel" id="panelC">
+    <h2>(C) 합<span class="sub">입사파 + 산란파</span>
       <span class="tools"><button type="button" class="tool info-btn" data-info="infoC">ⓘ</button></span>
     </h2>
     <div class="body">
@@ -168,8 +194,7 @@
         <p>세 항의 정량적 비교는 (B) 패널의 "수치" 버튼에 있습니다.</p>
       </div>
     </div>
-    <p class="caption">파장이 길어지면 물체는 여전히 반응하지만, 그 반응이 밖으로
-    전파되지 않아 전체 장이 입사파와 거의 같아진다.</p>
+    <p class="caption">(C) 합 — 위 줄과 구별되지 않는다</p>
   </section>
 
 </div>

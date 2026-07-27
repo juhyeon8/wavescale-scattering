@@ -18,10 +18,20 @@
   // 2행 (D)(E)는 이 값이 아니라 물리 격자 nd=20 을 쓴다.
   var ND_DISPLAY = 14;
 
-  var Z_HALF = 5; // 표시 영역 z ∈ [−5a, +5a]
-  var X_HALF = 3; // 표시 영역 x ∈ [−3a, +3a]
-  var NZ = 120;   // 화면 격자 (z)
-  var NX = 72;    // 화면 격자 (x) — 10a×6a 이므로 120:72 = 1.667 로 픽셀 정사각형
+  // 표시 범위는 λ 기준이 기본이다: z 범위 = 3λ 고정.
+  // 그러면 λ를 바꿔도 (A) 입사파 줄이 언제나 똑같이 생기고(마루 세 개),
+  // 변하는 것이 (B) 하나뿐이라 원인과 결과가 분리되어 보인다. 동시에 입자는
+  // λ에 비해 점점 작은 점이 되어 λ/a 가 화면에서 직접 읽힌다.
+  var RANGE_LAMBDA_Z = 3;  // z 범위 = 3λ
+  var RANGE_A_Z = 16;      // 'a 기준' 토글: z ∈ [−8a, 8a]
+
+  // 화면 격자는 패널 가로세로비에 맞춰 자동 산출한다(픽셀 정사각형 유지).
+  //   NZ * NX ≈ TOTAL_SAMPLES,  NZ / NX ≈ aspect
+  var TOTAL_SAMPLES = 8000;
+  var Z_HALF = 7.5; // a 단위. updateGridDims/λ 에 따라 다시 잡힌다
+  var X_HALF = 1.1;
+  var NZ = 216;
+  var NX = 36;      // 짝수여야 x 거울 대칭(절반만 계산)이 성립한다
 
   // 마스크 반경은 1.5a로 고정한다 — 축소하지 않는다.
   // nd_display=14, 셀 중심 배치이므로 최외곽 쌍극자는 r ≈ 0.93~1.00a 에 있다.
@@ -48,11 +58,6 @@
   // RGD 적용 하한. λ/a < π (x > 2) 이면 |m−1| ≪ 1 조건이 깨진다.
   // 계산은 계속하되 화면을 흐리게 하고 숫자를 회색으로 둔다.
   var LAMBDA_OVER_A_MIN = Math.PI;
-
-  // 파장이 표시 범위(10a)의 2배를 넘으면 입사파가 거의 단색으로 보인다.
-  // 물리적으로 정확한 결과(준정전기 영역)이지만 화면만 보면 고장처럼 보이므로
-  // 캡션으로 설명한다.
-  var UNIFORM_CAPTION_LAMBDA = 20;
 
   // 개발용 대칭 어서션. 기본값 false — true 로 두면 미러링으로 채운 열 하나를
   // scatteredFieldXZPlane 으로 직접 계산해 대조한다.
@@ -98,28 +103,80 @@
   var theta = Math.PI / 2; // (E)(F) 전용 θ. 탭 2 진입 시 기본 90°
   var activeTab = 1;       // a·λ 는 두 탭이 공유한다(탭을 바꿔도 유지)
   var term = 'full';
-  var scaleMode = 'auto';
+  // 배율 기본값은 ×1 이다. 자동 배율이면 λ를 늘려도 (B)가 늘 비슷하게 보여서
+  // "산란파가 약해진다"는 메시지가 통째로 사라진다.
+  var scaleMode = '1';
+  var rangeMode = 'lambda';
+  var showArrows = true;
   // 지표는 기본 숨김. 켠 상태는 세션 동안 유지된다(λ를 바꿔도 꺼지지 않는다).
   var showMetrics = false;
 
-  // 화면 점마다 세 항을 캐싱한다 — (B)의 [전체]/[복사]/[유도]/[정전] 토글이
-  // 재계산 없이 표시만 바꾸는 일이 되도록. 재계산은 λ가 바뀔 때만 한다.
-  // 표시량이 Re(E_x) 순간 스냅샷(t=0)이므로 E_x의 실수부만 저장하면 된다.
-  var fieldRe = {
-    radiation: new Float64Array(NZ * NX),
-    induction: new Float64Array(NZ * NX),
-    static: new Float64Array(NZ * NX)
-  };
-  var incidentRe = new Float64Array(NZ * NX);
-  var maskFlag = new Uint8Array(NZ * NX);
-  var metrics = { radiation: 0, induction: 0, static: 0 };
+  // --- 애니메이션 --------------------------------------------------------
+  // 화면 주기를 λ와 무관하게 고정한다. 실제 ω를 쓰면 21cm 전파에서는 멈춰
+  // 보이고 가시광선에서는 폭주한다.
+  var SCREEN_PERIOD = 2.0; // 초
+  var animPhase = 0;       // ωt
+  var animating = true;
+  var animSpeed = 1;
+  var lastFrameT = 0;
+  var rafId = null;
+
+  // 화면 점마다 세 항의 복소 진폭을 캐싱한다 — 프레임마다 하는 일은
+  // val = Re·cos(ωt) + Im·sin(ωt) 곱셈 두 번뿐이고, 무거운 쌍극자 합은
+  // a 또는 λ가 바뀔 때만 돈다. (시간 규약 e^{-iωt})
+  // full 은 세 항의 합을 미리 더해 둔 것이다(프레임마다 더하지 않기 위해).
+  var FIELD_KEYS = ['radiation', 'induction', 'static', 'full'];
+  var fieldRe = {}, fieldIm = {};
+  var incidentRe = null, incidentIm = null, maskFlag = null;
+  var metrics = { radiation: 0, induction: 0, static: 0, maxScaAmp: 0 };
+
+  function allocBuffers() {
+    var n = NZ * NX;
+    for (var i = 0; i < FIELD_KEYS.length; i++) {
+      fieldRe[FIELD_KEYS[i]] = new Float64Array(n);
+      fieldIm[FIELD_KEYS[i]] = new Float64Array(n);
+    }
+    incidentRe = new Float64Array(n);
+    incidentIm = new Float64Array(n);
+    maskFlag = new Uint8Array(n);
+    offscreen = {}; // 크기가 바뀌었으므로 오프스크린 캐시를 버린다
+  }
+  allocBuffers();
 
   // ---------------------------------------------------------------------
   // 좌표
   // ---------------------------------------------------------------------
 
-  var hz = (2 * Z_HALF) / NZ;
-  var hx = (2 * X_HALF) / NX;
+  var hz = 0, hx = 0;
+
+  // 표시 범위와 화면 격자를 현재 패널 크기·λ 에 맞춰 다시 잡는다.
+  // 반환값은 "격자 칸 수가 바뀌었는가" — 바뀌었으면 장을 다시 계산해야 한다.
+  function updateGeometry() {
+    Z_HALF = (rangeMode === 'lambda' ? RANGE_LAMBDA_Z * lambdaOverA() : RANGE_A_Z) / 2;
+
+    var body = document.querySelector('#panelA .body');
+    var w = body ? body.clientWidth : 0;
+    var h = body ? body.clientHeight : 0;
+    var changed = false;
+
+    if (w > 0 && h > 0) {
+      var aspect = w / h;
+      var nx = Math.round(Math.sqrt(TOTAL_SAMPLES / aspect) / 2) * 2; // 짝수
+      if (nx < 8) nx = 8;
+      var nz = Math.max(16, Math.round(nx * aspect));
+      if (nz !== NZ || nx !== NX) {
+        NZ = nz; NX = nx;
+        allocBuffers();
+        changed = true;
+      }
+    }
+
+    // 픽셀이 정사각형이 되도록 x 범위를 z 범위에서 유도한다
+    X_HALF = (Z_HALF * NX) / NZ;
+    hz = (2 * Z_HALF) / NZ;
+    hx = (2 * X_HALF) / NX;
+    return changed;
+  }
 
   // 셀 중심 배치 — x 표본이 x=0 에 대해 대칭이어야 좌우 반전이 정확해진다
   // (1단계 물리 격자가 셀 중심으로 Im(F)/N=0 을 보장했던 것과 같은 논리).
@@ -137,7 +194,8 @@
   function compute() {
     var k = waveK();
     var alpha = alphaTotal();
-    var halfRows = NX / 2; // 행 0..35 가 x>0, 나머지는 거울상
+    var halfRows = NX / 2; // 위쪽 절반이 x>0, 나머지는 거울상
+    var maxAmp = 0;
 
     for (var j = 0; j < halfRows; j++) {
       var x = xAt(j);
@@ -147,9 +205,11 @@
         var idx = j * NZ + i;
         var idxm = jm * NZ + i;
 
-        var inc = Math.cos(k * z * aUm);
-        incidentRe[idx] = inc;
-        incidentRe[idxm] = inc; // 입사파는 x에 무관
+        // 입사파 e^{ikz} — 복사파와 같은 규약으로 실·허수부를 함께 둔다.
+        var ph = k * z * aUm;
+        var cr = Math.cos(ph), ci = Math.sin(ph);
+        incidentRe[idx] = cr; incidentRe[idxm] = cr; // 입사파는 x에 무관
+        incidentIm[idx] = ci; incidentIm[idxm] = ci;
 
         // 마스크 안쪽은 계산 자체를 생략한다(Born 근사 적용 범위 밖 + 성능).
         if (x * x + z * z < MASK_R * MASK_R) {
@@ -161,21 +221,68 @@
         maskFlag[idxm] = 0;
 
         var f = RGD.scatteredFieldXZPlane(x * aUm, z * aUm, grid, k, alpha);
+        var fr = 0, fi = 0;
         for (var t = 0; t < 3; t++) {
           var tn = TERM_NAMES[t];
-          var v = f[tn].ex.re;
-          fieldRe[tn][idx] = v;
+          var vr = f[tn].ex.re, vi = f[tn].ex.im;
+          fr += vr; fi += vi;
           // x 거울 관계: E_x(−x_o, z_o) = +E_x(x_o, z_o) (짝함수).
           // 커널이 dx에 대해 E_x는 짝·E_z는 홀이라는 성질과, 격자가 x→−x
-          // 대칭이라는 조건이 함께 있어야 성립한다. 표시량이 Re(E_x)이므로
+          // 대칭이라는 조건이 함께 있어야 성립한다. 표시량이 E_x이므로
           // 부호 그대로 복사한다(E_z를 쓰게 되면 부호를 뒤집어야 한다).
-          fieldRe[tn][idxm] = v;
+          fieldRe[tn][idx] = vr; fieldRe[tn][idxm] = vr;
+          fieldIm[tn][idx] = vi; fieldIm[tn][idxm] = vi;
         }
+        fieldRe.full[idx] = fr; fieldRe.full[idxm] = fr;
+        fieldIm.full[idx] = fi; fieldIm.full[idxm] = fi;
+
+        var amp = Math.sqrt(fr * fr + fi * fi);
+        if (amp > maxAmp) maxAmp = amp;
       }
     }
 
+    metrics.maxScaAmp = maxAmp; // 입사파 진폭 1 대비
+    metrics.ratioAtLambda = scatteredRatioAtLambda();
     if (DEBUG_SYMMETRY) assertMirror(k);
     computeMetrics(k);
+    computeArrows(k, alpha);
+  }
+
+  // --- 축 위 화살표 ------------------------------------------------------
+  // 색 지도와 반드시 같은 격자(ND_DISPLAY)로 계산한다 — physGrid(nd=20)로
+  // 계산하면 밑에 깔린 색과 값이 미세하게 어긋나 겹쳐 보였을 때 어색해진다.
+  //
+  // 화면 x 표본은 셀 중심이라 x=0 표본이 존재하지 않는다. 그래서 격자에서
+  // 읽지 않고 x=0 에서 scatteredFieldXZPlane 을 직접 부른다
+  // (40점 × 열 축약 ≈ 3만 — 무시할 수준).
+  var ARROW_N = 40;
+  var arrows = null;
+
+  function computeArrows(k, alpha) {
+    var zh = Z_HALF;
+    var step = (2 * zh) / ARROW_N;
+    var z = [], iRe = [], iIm = [];
+    var sRe = {}, sIm = {};
+    for (var q = 0; q < FIELD_KEYS.length; q++) { sRe[FIELD_KEYS[q]] = []; sIm[FIELD_KEYS[q]] = []; }
+
+    for (var i = 0; i < ARROW_N; i++) {
+      var zz = -zh + (i + 0.5) * step;
+      if (Math.abs(zz) < MASK_R) continue; // 마스크 안은 생략
+      var f = RGD.scatteredFieldXZPlane(0, zz * aUm, grid, k, alpha);
+      var ph = k * zz * aUm;
+      z.push(zz);
+      iRe.push(Math.cos(ph));
+      iIm.push(Math.sin(ph));
+      var fr = 0, fi = 0;
+      for (var t = 0; t < 3; t++) {
+        var tn = TERM_NAMES[t];
+        sRe[tn].push(f[tn].ex.re);
+        sIm[tn].push(f[tn].ex.im);
+        fr += f[tn].ex.re; fi += f[tn].ex.im;
+      }
+      sRe.full.push(fr); sIm.full.push(fi);
+    }
+    arrows = { z: z, iRe: iRe, iIm: iIm, sRe: sRe, sIm: sIm };
   }
 
   // 미러링으로 채운 행 하나를 직접 계산해 대조한다.
@@ -310,13 +417,13 @@
     };
   }
 
-  // (A) 파장 눈금 막대 — 논문 표 6과 같은 형식.
-  // λ가 창(10a)보다 크면 화살표가 패널 밖으로 잘려 나가게 그대로 둔다.
+  // (A) 파장 눈금 막대. λ 기준 축척에서는 화면 폭의 정확히 1/3 이 된다.
+  // 'a 기준'으로 바꾸면 λ가 창보다 길 때 화살표가 패널 밖으로 잘려 나가는데,
   // 그 잘림 자체가 "파장이 이 화면보다 크다"는 메시지다.
   function drawWavelengthBar(v) {
     var ctx = v.ctx;
     var loa = lambdaOverA(); // 화면 좌표가 a 단위이므로 막대 길이도 λ/a
-    var y = v.xToPx(-2.3);
+    var y = v.box.y + v.box.h * 0.87;
     var x0 = v.zToPx(-loa / 2);
     var x1 = v.zToPx(loa / 2);
 
@@ -367,13 +474,13 @@
   // (B) kR = 1 경계원 — 반지름 R = 1/k = λ/2π.
   // 원 안은 반응성 근접 영역(kR<1), 밖은 복사 영역(kR>1).
   // 원이 화면 밖이거나 마스크 안이면 원 대신 배지로 알린다.
-  var CORNER_R = Math.sqrt(Z_HALF * Z_HALF + X_HALF * X_HALF); // 5.83a
+  function cornerR() { return Math.sqrt(Z_HALF * Z_HALF + X_HALF * X_HALF); }
 
   function drawBoundaryCircle(v, k) {
     var R = 1 / (k * aUm); // a 단위. 1/k [μm] 를 a 로 나눈 값 = 1/x
     var badge = document.getElementById('zoneBadge');
 
-    if (R > CORNER_R) {
+    if (R > cornerR()) {
       badge.textContent = '이 화면 전체가 반응성 근접 영역 (kR < 1)';
       badge.hidden = false;
       return;
@@ -439,18 +546,111 @@
     ctx.restore();
   }
 
-  // 마스크 안내
-  function drawMaskLabel(v) {
+  // 입자 표시. λ 기준 축척에서는 λ/a 가 커질수록 몇 픽셀짜리 점이 되므로
+  // 최소 2px(반지름 1px)는 그려서 입자 위치가 늘 보이게 한다.
+  function drawParticle(v) {
     var ctx = v.ctx;
     var px = v.zToPx(0);
     var py = v.xToPx(0);
+    var rpx = Math.max(v.zToPx(MASK_R) - px, 1);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(px, py, rpx, 0, 2 * Math.PI);
+    ctx.fillStyle = 'rgb(176,176,176)';
+    ctx.fill();
+    if (rpx >= 3) {
+      ctx.strokeStyle = '#8c8c8c';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+    // 안내 문구는 원이 충분히 클 때만 (작으면 글자가 원 밖으로 삐져나온다)
+    if (rpx >= 34) {
+      ctx.font = '10px "Malgun Gothic", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#fff';
+      ctx.fillText('모형 적용', px, py - 6);
+      ctx.fillText('범위 밖', px, py + 6);
+    }
+    ctx.restore();
+  }
+
+  // 축 위 화살표 — Matter & Interactions 24.38 과 같은 읽기.
+  // 세 줄이 같은 스케일을 쓴다: |E_입사| = 1 이 행 높이의 35%.
+  // (B)만은 색 지도와 어긋나지 않도록 표시 배율을 함께 건다.
+  var ARROW_UNIT_FRAC = 0.35;
+
+  function drawArrows(v, kind, mag) {
+    if (!showArrows || !arrows) return;
+    var ctx = v.ctx;
+    var c = Math.cos(animPhase), s = Math.sin(animPhase);
+    var unit = ARROW_UNIT_FRAC * v.box.h * (mag || 1);
+    var y0 = v.xToPx(0);
+    var re, im;
+
+    if (kind === 'inc') { re = arrows.iRe; im = arrows.iIm; }
+    else { re = arrows.sRe[kind === 'sca' ? term : 'full']; im = arrows.sIm[kind === 'sca' ? term : 'full']; }
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(v.box.x, v.box.y, v.box.w, v.box.h);
+    ctx.clip();
+    ctx.strokeStyle = 'rgba(60,60,60,0.8)';
+    ctx.fillStyle = 'rgba(60,60,60,0.8)';
+    ctx.lineWidth = 1;
+
+    for (var i = 0; i < arrows.z.length; i++) {
+      var val = re[i] * c + im[i] * s;
+      if (kind === 'tot') val += arrows.iRe[i] * c + arrows.iIm[i] * s;
+      var px = v.zToPx(arrows.z[i]);
+      var len = val * unit;
+      if (Math.abs(len) < 0.6) continue; // 눈에 안 보이는 것은 그리지 않는다
+      var y1 = y0 - len;
+      ctx.beginPath();
+      ctx.moveTo(px, y0);
+      ctx.lineTo(px, y1);
+      ctx.stroke();
+      var hd = Math.min(4, Math.abs(len) * 0.5);
+      var dir = len > 0 ? 1 : -1;
+      ctx.beginPath();
+      ctx.moveTo(px, y1);
+      ctx.lineTo(px - hd * 0.7, y1 + dir * hd);
+      ctx.lineTo(px + hd * 0.7, y1 + dir * hd);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // 색 위에 얹는 작은 라벨. 흰 배경을 깔지 않으면 빨강·파랑 위에서 읽히지 않는다.
+  function labelBox(ctx, text, x, y, align, color) {
+    var w = ctx.measureText(text).width;
+    ctx.fillStyle = 'rgba(255,255,255,0.82)';
+    ctx.fillRect(align === 'right' ? x - w - 3 : x - 3, y - 10, w + 6, 12);
+    ctx.fillStyle = color;
+    ctx.textAlign = align;
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(text, x, y);
+  }
+
+  // 좌하단 좌표 아이콘 — 세 줄 모두에 같은 자리에 둔다
+  function drawAxisIcon(v) {
+    var ctx = v.ctx;
+    ctx.save();
+    ctx.font = '10px Consolas, monospace';
+    labelBox(ctx, '↑x  →z  (y는 화면 안쪽)', v.box.x + 7, v.box.y + v.box.h - 5, 'left', '#555');
+    ctx.restore();
+  }
+
+  // 색 규약 — (A)에만 한 번 둔다
+  function drawColorNote(v) {
+    var ctx = v.ctx;
     ctx.save();
     ctx.font = '10px "Malgun Gothic", sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#fff';
-    ctx.fillText('모형 적용', px, py - 6);
-    ctx.fillText('범위 밖', px, py + 6);
+    var rx = v.box.x + v.box.w - 7;
+    labelBox(ctx, '빨강 = +x 전기장', rx, v.box.y + v.box.h - 18, 'right', '#c0392b');
+    labelBox(ctx, '파랑 = −x 전기장', rx, v.box.y + v.box.h - 5, 'right', '#2166ac');
     ctx.restore();
   }
 
@@ -458,12 +658,15 @@
   // 표시 배율 (B 전용)
   // ---------------------------------------------------------------------
 
+  // 기본은 ×1 이다. 자동 배율이 켜져 있으면 λ를 늘려도 (B)가 늘 비슷하게
+  // 보여서 "산란파가 약해진다"는 메시지가 통째로 사라진다.
   function currentScale() {
     if (scaleMode !== 'auto') return parseFloat(scaleMode);
     var max = 0;
     for (var p = 0; p < NZ * NX; p++) {
       if (maskFlag[p]) continue;
-      var v = Math.abs(termValue(p));
+      var re = fieldRe[term][p], im = fieldIm[term][p];
+      var v = Math.sqrt(re * re + im * im);
       if (v > max) max = v;
     }
     if (max <= 0) return 1;
@@ -471,13 +674,6 @@
     var raw = 0.8 / max;
     if (raw <= 1) return 1;
     return Math.pow(10, Math.floor(Math.log(raw) / Math.LN10));
-  }
-
-  function termValue(p) {
-    if (term === 'full') {
-      return fieldRe.radiation[p] + fieldRe.induction[p] + fieldRe.static[p];
-    }
-    return fieldRe[term][p];
   }
 
   // ---------------------------------------------------------------------
@@ -497,42 +693,65 @@
     renderScatterPattern();
   }
 
+  // 세 줄은 같은 z축·같은 색 스케일·같은 픽셀 크기를 공유한다.
+  // 프레임마다 하는 일은 Re·cos(ωt) + Im·sin(ωt) 곱셈뿐이다.
   function renderTab1() {
     var k = waveK();
+    var c = Math.cos(animPhase), s = Math.sin(animPhase);
 
-    var srcA = paint('A', function (p) { return incidentRe[p]; });
+    var srcA = paint('A', function (p) { return incidentRe[p] * c + incidentIm[p] * s; });
     var vA = blit(document.getElementById('canvasA'), srcA);
-    if (vA) { drawMaskLabel(vA); drawWavelengthBar(vA); }
+    if (vA) {
+      drawParticle(vA);
+      drawWavelengthBar(vA);
+      drawArrows(vA, 'inc', 1);
+      drawAxisIcon(vA);
+      drawColorNote(vA);
+    }
 
     var mag = currentScale();
-    var srcB = paint('B', function (p) { return termValue(p) * mag; });
+    var fr = fieldRe[term], fi = fieldIm[term];
+    var srcB = paint('B', function (p) { return (fr[p] * c + fi[p] * s) * mag; });
     var vB = blit(document.getElementById('canvasB'), srcB);
     if (vB) {
-      drawMaskLabel(vB);
+      drawParticle(vB);
       drawBoundaryCircle(vB, k);
+      drawArrows(vB, 'sca', mag);
+      drawAxisIcon(vB);
       if (showMetrics) drawReferencePoint(vB);
     }
 
     // (C)는 항상 세 항을 모두 합친 원본값(배율 1)으로 계산한다.
     // 배율이 걸린 산란파를 더하면 (C)가 물리적으로 무의미해진다.
-    // (C)에는 이미지 + 캡션만 둔다 — 수치와 기준점 마커는 (B)로 옮겼다.
+    var cr = fieldRe.full, ci = fieldIm.full;
     var srcC = paint('C', function (p) {
-      return incidentRe[p] + fieldRe.radiation[p] + fieldRe.induction[p] + fieldRe.static[p];
+      return (incidentRe[p] + cr[p]) * c + (incidentIm[p] + ci[p]) * s;
     });
     var vC = blit(document.getElementById('canvasC'), srcC);
-    if (vC) drawMaskLabel(vC);
+    if (vC) {
+      drawParticle(vC);
+      drawArrows(vC, 'tot', 1);
+      drawAxisIcon(vC);
+    }
 
     document.getElementById('scaleBadge').textContent = '×' + fmtInt(mag);
+    document.getElementById('scaleBadge').hidden = (mag === 1);
     document.getElementById('termLabel').textContent = TERM_LABELS[term];
 
-    // (A) 캡션 — 파장이 표시 범위보다 크면 균일하게 보이는 이유를 설명한다
-    var capA = document.getElementById('captionA');
-    if (lambdaOverA() >= UNIFORM_CAPTION_LAMBDA) {
-      capA.textContent = '파장이 표시 범위보다 커서 입사파가 균일하게 보입니다';
-      capA.className = 'caption warn';
+    // 산란파가 사실상 백지로 보이면 고장으로 오인되므로 알린다.
+    // 배지가 뜬다는 사실 자체가 전달하려는 내용이다.
+    //
+    // 기준은 화면 최댓값이 아니라 z = λ 지점의 비다. 화면 최댓값은 마스크
+    // 가장자리의 1/R³ 근접장이 늘 0.1 수준이라(λ와 거의 무관) 백지 여부를
+    // 전혀 가려내지 못한다. z = λ 는 항상 kr = 2π 라 λ와 무관하게 비교된다.
+    var weak = document.getElementById('weakBadge');
+    var rel = metrics.ratioAtLambda;
+    if (rel * mag < 0.02) {
+      weak.textContent = '산란파 = 입사파의 ' + (rel * 100).toPrecision(2) +
+        '% (z = λ) — 배율을 올려 보세요';
+      weak.hidden = false;
     } else {
-      capA.textContent = '표시 영역 z ∈ [−5a, +5a], x ∈ [−3a, +3a]';
-      capA.className = 'caption';
+      weak.hidden = true;
     }
 
     renderMetrics();
@@ -641,7 +860,9 @@
     var rMax = 0.9 * (1 / ND_PHYS) * v.s;
     for (var c = 0; c < cols.length; c++) {
       var col = cols[c];
-      colorInto(rgb, 0, Math.cos(k * col.z));
+      // (A)(B)(C)와 같은 위상으로 움직인다 — 입사파 마루가 입자를 지날 때
+      // 그 자리 전하가 함께 변하는 것이 보여야 한다.
+      colorInto(rgb, 0, Math.cos(k * col.z - animPhase));
       ctx.fillStyle = 'rgb(' + Math.round(rgb[0]) + ',' + Math.round(rgb[1]) + ',' + Math.round(rgb[2]) + ')';
       ctx.beginPath();
       // 넓이가 m에 비례하도록 반지름은 √m
@@ -998,9 +1219,24 @@
     return { G: r.G, Q: r.sigma / (Math.PI * aUm * aUm) };
   }
 
+  // z = λ 지점(+z축)의 |E_산란|/|E_입사|. 그 자리는 항상 kr = 2π 라
+  // λ와 무관하게 원거리 조건이 보장된다. 입사파 진폭은 1이다.
+  function scatteredRatioAtLambda() {
+    var f = RGD.scatteredFieldXZPlane(0, lambdaUm, grid, waveK(), alphaTotal());
+    var re = 0, im = 0;
+    for (var t = 0; t < 3; t++) {
+      var tn = TERM_NAMES[t];
+      re += f[tn].ex.re; im += f[tn].ex.im;
+    }
+    var ez = f.radiation.ez, ez2 = f.induction.ez, ez3 = f.static.ez;
+    var zr = ez.re + ez2.re + ez3.re, zi = ez.im + ez2.im + ez3.im;
+    return Math.sqrt(re * re + im * im + zr * zr + zi * zi);
+  }
+
   function updateReadout() {
     var x = sizeX();
     var d = computeDerived();
+    var ratio = scatteredRatioAtLambda();
     // Q > 1 은 버그가 아니라 RGD 근사(|m−1| ≪ 1)가 무너진다는 신호다.
     // 값을 자르거나 계수를 조정하지 않고 빨간색으로 표시만 한다.
     document.getElementById('lambdaReadout').innerHTML =
@@ -1008,8 +1244,9 @@
       'λ = ' + fmtLen(lambdaUm) + '<span class="sep">·</span>' +
       'λ/a = ' + fmtLambda(lambdaOverA()) + '<span class="sep">·</span>' +
       'x = ' + (x >= 0.001 ? x.toFixed(4) : x.toExponential(3)) + '<span class="sep">·</span>' +
-      'G = ' + d.G.toFixed(3) + '<span class="sep">·</span>' +
-      'Q = <b class="' + (d.Q > 1 ? 'q-hot' : 'q-ok') + '">' + fmtQ(d.Q) + '</b>';
+      '|E_산란|/|E_입사| = ' + fmtQ(ratio) + ' (z = λ)' + '<span class="sep">·</span>' +
+      'Q = <b class="' + (d.Q > 1 ? 'q-hot' : 'q-ok') + '">' + fmtQ(d.Q) + '</b>' +
+      '<span class="sep">·</span>G = ' + d.G.toFixed(3);
     updateNotices();
   }
 
@@ -1043,12 +1280,41 @@
     // file:// 에서는 Web Worker가 막히는 경우가 많아 쓰지 않는다. 동기 계산이므로
     // 브라우저가 "계산 중…"을 페인트할 틈을 주기 위해 한 틱 미룬다.
     setTimeout(function () {
+      updateGeometry(); // 표시 범위는 λ에 딸려 움직인다
       compute();
       computeFCurve(waveK()); // (F) 곡선도 a·λ 에만 의존한다
       render();
       status.textContent = '';
     }, 0);
   }
+
+  // ---------------------------------------------------------------------
+  // 애니메이션
+  // ---------------------------------------------------------------------
+
+  function frame(t) {
+    rafId = requestAnimationFrame(frame);
+    if (!animating) { lastFrameT = t; return; }
+    var dt = lastFrameT ? (t - lastFrameT) / 1000 : 0;
+    lastFrameT = t;
+    if (dt > 0.5) dt = 0; // 탭 복귀 등으로 크게 튄 프레임은 버린다
+    animPhase = (animPhase + (2 * Math.PI) * (dt / SCREEN_PERIOD) * animSpeed) % (2 * Math.PI);
+    render();
+  }
+
+  function setAnimating(on) {
+    animating = on;
+    lastFrameT = 0;
+    var btn = document.getElementById('playBtn');
+    btn.textContent = on ? '⏸ 정지' : '▶ 재생';
+    btn.classList.toggle('on', !on);
+    if (!on) render();
+  }
+
+  // 검증용 훅 — Playwright 에서 위상을 고정해 프레임을 비교할 때 쓴다.
+  window.RGDTest = {
+    freeze: function (p) { setAnimating(false); animPhase = p || 0; render(); }
+  };
 
   // θ만 바뀔 때는 (E)(F)만 다시 그리면 된다 — 장 데이터도 (F) 곡선도 λ에만
   // 의존하므로 재계산이 필요 없다. 그래서 change가 아니라 input에서 즉시
@@ -1166,6 +1432,30 @@
     render();
   });
 
+  // 표시 범위 — λ 기준(기본) ↔ a 기준. 범위가 바뀌면 표본 위치가 달라지므로
+  // 다시 그리는 것으로는 안 되고 장을 재계산해야 한다.
+  document.getElementById('rangeSelect').addEventListener('change', function () {
+    rangeMode = this.value;
+    recompute();
+  });
+
+  document.getElementById('arrowBox').addEventListener('change', function () {
+    showArrows = this.checked;
+    render();
+  });
+
+  document.getElementById('playBtn').addEventListener('click', function () {
+    setAnimating(!animating);
+  });
+
+  // 속도 0.25× ~ 2× (로그). 가운데(500)가 1×.
+  var speedSlider = document.getElementById('speedSlider');
+  speedSlider.addEventListener('input', function () {
+    animSpeed = 0.25 * Math.pow(8, parseFloat(this.value) / 1000);
+    document.getElementById('speedReadout').textContent = animSpeed.toFixed(2) + '×';
+    if (!animating) render();
+  });
+
   // 탭 전환 — λ/a 는 두 탭이 공유하므로 재계산 없이 다시 그리기만 한다.
   var tabButtons = document.querySelectorAll('.tab-btn');
   function setTab(n) {
@@ -1258,10 +1548,16 @@
     });
   }
 
+  // 창 크기가 바뀌면 패널 가로세로비가 달라져 화면 격자 칸 수가 바뀔 수 있다.
+  // 칸 수가 바뀌면 표본 위치가 달라지므로 다시 그리는 것만으로는 안 되고
+  // 장을 재계산해야 한다.
   var resizeTimer = null;
   window.addEventListener('resize', function () {
     clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(render, 120); // 장 데이터는 그대로, 다시 그리기만
+    resizeTimer = setTimeout(function () {
+      if (updateGeometry()) recompute();
+      else render();
+    }, 120);
   });
 
   // ---------------------------------------------------------------------
@@ -1270,8 +1566,10 @@
   setTab(1); // 탭 1이 기본. 컨트롤 그룹 표시 상태를 초기화한다
   recompute();
 
-  // 최초 recompute 시점에 레이아웃이 아직 안 잡혀 clientWidth가 0이면 blit이
-  // 그리지 않고 돌아간다. load 후 한 번 더 그려 둔다(장 데이터는 캐시되어 있으므로
-  // 다시 계산하지 않는다).
-  window.addEventListener('load', render);
+  // 최초 recompute 시점에 레이아웃이 아직 안 잡혀 clientWidth가 0이면 격자
+  // 칸 수를 잡을 수 없다. load 후 한 번 더 재계산한다.
+  window.addEventListener('load', function () {
+    if (updateGeometry()) recompute(); else render();
+    rafId = requestAnimationFrame(frame);
+  });
 })();
