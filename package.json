@@ -1,0 +1,15 @@
+{
+  "name": "rgd-scattering",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Rayleigh-Gans-Debye 소입자 산란 시뮬레이션 (수업자료)",
+  "scripts": {
+    "test": "npm run test:physics",
+    "test:physics": "node verify.js",
+    "test:ui": "node verify-ui.js",
+    "test:ui:setup": "playwright install chromium"
+  },
+  "devDependencies": {
+    "playwright": "^1.62.0"
+  }
+}

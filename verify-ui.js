@@ -7,8 +7,14 @@
 //   verify-ui.js — 화면 축척, 물체 표식 크기, 모드 복원
 //
 // 실행:
-//   npm install playwright && npx playwright install chromium
-//   node verify-ui.js
+//   npm install          (playwright 는 devDependencies 에만 있다)
+//   npm run test:ui:setup   ← Chromium 바이너리 내려받기, 최초 1회
+//   npm run test:ui
+//
+// 물리 쪽은 의존성 없이 그대로 돈다: npm run test:physics (= node verify.js)
+//
+// index.html 자체는 여전히 더블클릭으로 열린다. package.json 은 검증용일 뿐
+// 페이지 로딩 경로(<link> · 클래식 <script src>)에 관여하지 않는다.
 //
 // 검증 항목
 //   1. SCALE_MODE='a' 에서 줄무늬 주기가 λ에 비례한다 (±5%)
