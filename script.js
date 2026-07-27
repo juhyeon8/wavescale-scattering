@@ -30,9 +30,24 @@
   // 알갱이 무늬로 드러나 논문 그림으로 쓸 수 없다. 1.5a에서는 1~3%다.
   var MASK_R = 1.5;
 
-  var ALPHA_TOTAL = 1;
-  var LAMBDA_MIN = Math.PI; // x = 2.0000 정확히 (x ≤ 2 제한의 상한)
-  var LAMBDA_MAX = 1000;
+  // --- 실제 단위 ---------------------------------------------------------
+  // 길이의 기준 단위는 μm 다. a = 1 고정을 해제했으므로 a 와 λ 가 각각
+  // 독립 슬라이더이고, 물리량(σ, Q)이 실제 단위로 나온다.
+  //
+  // 그림 자체는 a 에 의존하지 않는다: 격자를 a 배로 늘리면 k 는 1/a 배가 되고
+  // α ∝ a³ 이므로 세 항(k²/R, k/R², 1/R³)에서 a 가 정확히 상쇄된다.
+  // 즉 λ/a 가 같으면 그림이 같다 — "λ/a 고정" 체크박스가 그것을 보여준다.
+  var A_MIN = 0.01, A_MAX = 10, A_DEFAULT = 0.1;         // μm
+  var LAM_MIN = 0.1, LAM_MAX = 1e6, LAM_DEFAULT = 0.5;   // μm (100nm ~ 1m)
+
+  // 규산염 m ≈ 1.7 의 (m²−1)/(m²+2). α_total = 0.39·a³ 이 된다.
+  // 계수 없이 a³ 만 쓰면 완전도체 구의 상한이라 λ/a = 5 에서 Q_sca 가 3.7까지
+  // 올라간다. UI 컨트롤로 노출하지 않는 상수다.
+  var POLARIZABILITY_FACTOR = 0.39;
+
+  // RGD 적용 하한. λ/a < π (x > 2) 이면 |m−1| ≪ 1 조건이 깨진다.
+  // 계산은 계속하되 화면을 흐리게 하고 숫자를 회색으로 둔다.
+  var LAMBDA_OVER_A_MIN = Math.PI;
 
   // 파장이 표시 범위(10a)의 2배를 넘으면 입사파가 거의 단색으로 보인다.
   // 물리적으로 정확한 결과(준정전기 영역)이지만 화면만 보면 고장처럼 보이므로
@@ -59,11 +74,29 @@
   var ND_PHYS = 20;
   var THETA_SAMPLES = 181; // (F) 곡선: 1° 간격
 
-  var grid = RGD.buildDipoleGrid(1, ND_DISPLAY);
-  var physGrid = RGD.buildDipoleGrid(1, ND_PHYS);
+  var aUm = A_DEFAULT;
+  var lambdaUm = LAM_DEFAULT;
+  var lockRatio = false;                        // λ/a 고정 체크박스
+  var lockedRatio = LAM_DEFAULT / A_DEFAULT;    // 고정할 당시의 λ/a
+  var atLimit = false;                          // 고정 상태에서 슬라이더 끝에 닿음
+
+  // 격자는 a 에 의존하므로 a 가 바뀔 때마다 다시 만든다.
+  var grid = null;      // 표시용 nd = 14
+  var physGrid = null;  // 물리 nd = 20 (σ/G 경로와 동일)
+
+  function rebuildGrids() {
+    grid = RGD.buildDipoleGrid(aUm, ND_DISPLAY);
+    physGrid = RGD.buildDipoleGrid(aUm, ND_PHYS);
+  }
+  rebuildGrids();
+
+  function lambdaOverA() { return lambdaUm / aUm; }
+  function waveK() { return (2 * Math.PI) / lambdaUm; }   // μm⁻¹
+  function sizeX() { return (2 * Math.PI * aUm) / lambdaUm; } // x = ka
+  function alphaTotal() { return POLARIZABILITY_FACTOR * aUm * aUm * aUm; }
+
   var theta = Math.PI / 2; // (E)(F) 전용 θ. 탭 2 진입 시 기본 90°
-  var activeTab = 1;       // λ/a 는 두 탭이 공유한다(탭을 바꿔도 유지)
-  var lambda = LAMBDA_MIN;
+  var activeTab = 1;       // a·λ 는 두 탭이 공유한다(탭을 바꿔도 유지)
   var term = 'full';
   var scaleMode = 'auto';
   // 지표는 기본 숨김. 켠 상태는 세션 동안 유지된다(λ를 바꿔도 꺼지지 않는다).
@@ -91,6 +124,9 @@
   // 셀 중심 배치 — x 표본이 x=0 에 대해 대칭이어야 좌우 반전이 정확해진다
   // (1단계 물리 격자가 셀 중심으로 Im(F)/N=0 을 보장했던 것과 같은 논리).
   // x=0 표본은 존재하지 않고, 행 j 와 NX−1−j 가 정확한 거울쌍이 된다.
+  // 화면 좌표는 계속 "a 단위"다(Z_HALF = 5 는 5a 라는 뜻). 물리 함수를 부를
+  // 때만 aUm 을 곱해 μm 로 바꾼다 — 눈금 막대·경계원 같은 오버레이가 전부
+  // a 단위로 그려지므로, 화면 쪽을 실단위로 바꾸면 그쪽이 전부 흔들린다.
   function zAt(i) { return -Z_HALF + (i + 0.5) * hz; }
   function xAt(j) { return X_HALF - (j + 0.5) * hx; } // 행 0 이 화면 위쪽(+x)
 
@@ -99,7 +135,8 @@
   // ---------------------------------------------------------------------
 
   function compute() {
-    var k = (2 * Math.PI) / lambda;
+    var k = waveK();
+    var alpha = alphaTotal();
     var halfRows = NX / 2; // 행 0..35 가 x>0, 나머지는 거울상
 
     for (var j = 0; j < halfRows; j++) {
@@ -110,7 +147,7 @@
         var idx = j * NZ + i;
         var idxm = jm * NZ + i;
 
-        var inc = Math.cos(k * z);
+        var inc = Math.cos(k * z * aUm);
         incidentRe[idx] = inc;
         incidentRe[idxm] = inc; // 입사파는 x에 무관
 
@@ -123,7 +160,7 @@
         maskFlag[idx] = 0;
         maskFlag[idxm] = 0;
 
-        var f = RGD.scatteredFieldXZPlane(x, z, grid, k, ALPHA_TOTAL);
+        var f = RGD.scatteredFieldXZPlane(x * aUm, z * aUm, grid, k, alpha);
         for (var t = 0; t < 3; t++) {
           var tn = TERM_NAMES[t];
           var v = f[tn].ex.re;
@@ -149,7 +186,7 @@
     for (var i = 0; i < NZ; i += 7) {
       var idx = j * NZ + i;
       if (maskFlag[idx]) continue;
-      var f = RGD.scatteredFieldXZPlane(x, zAt(i), grid, k, ALPHA_TOTAL);
+      var f = RGD.scatteredFieldXZPlane(x * aUm, zAt(i) * aUm, grid, k, alphaTotal());
       for (var t = 0; t < 3; t++) {
         var tn = TERM_NAMES[t];
         var direct = f[tn].ex.re;
@@ -173,7 +210,7 @@
   function computeMetrics(k) {
     for (var t = 0; t < 3; t++) {
       var tn = TERM_NAMES[t];
-      var f = RGD.scatteredFieldXZPlane(0, 2, grid, k, ALPHA_TOTAL, { term: tn });
+      var f = RGD.scatteredFieldXZPlane(0, 2 * aUm, grid, k, alphaTotal(), { term: tn });
       metrics[tn] = Math.sqrt(
         f.ex.re * f.ex.re + f.ex.im * f.ex.im + f.ez.re * f.ez.re + f.ez.im * f.ez.im
       );
@@ -278,9 +315,10 @@
   // 그 잘림 자체가 "파장이 이 화면보다 크다"는 메시지다.
   function drawWavelengthBar(v) {
     var ctx = v.ctx;
+    var loa = lambdaOverA(); // 화면 좌표가 a 단위이므로 막대 길이도 λ/a
     var y = v.xToPx(-2.3);
-    var x0 = v.zToPx(-lambda / 2);
-    var x1 = v.zToPx(lambda / 2);
+    var x0 = v.zToPx(-loa / 2);
+    var x1 = v.zToPx(loa / 2);
 
     ctx.save();
     ctx.beginPath();
@@ -312,7 +350,7 @@
     ctx.moveTo(x1, y - head); ctx.lineTo(x1, y + head);
     ctx.stroke();
 
-    var label = 'λ = ' + fmtLambda(lambda) + ' a';
+    var label = 'λ = ' + fmtLen(lambdaUm);
     ctx.font = '600 12px Consolas, monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
@@ -332,7 +370,7 @@
   var CORNER_R = Math.sqrt(Z_HALF * Z_HALF + X_HALF * X_HALF); // 5.83a
 
   function drawBoundaryCircle(v, k) {
-    var R = 1 / k;
+    var R = 1 / (k * aUm); // a 단위. 1/k [μm] 를 a 로 나눈 값 = 1/x
     var badge = document.getElementById('zoneBadge');
 
     if (R > CORNER_R) {
@@ -454,13 +492,13 @@
   }
 
   function renderTab2() {
-    var k = (2 * Math.PI) / lambda;
+    var k = waveK();
     renderPhasorSum(k);
     renderScatterPattern();
   }
 
   function renderTab1() {
-    var k = (2 * Math.PI) / lambda;
+    var k = waveK();
 
     var srcA = paint('A', function (p) { return incidentRe[p]; });
     var vA = blit(document.getElementById('canvasA'), srcA);
@@ -489,7 +527,7 @@
 
     // (A) 캡션 — 파장이 표시 범위보다 크면 균일하게 보이는 이유를 설명한다
     var capA = document.getElementById('captionA');
-    if (lambda >= UNIFORM_CAPTION_LAMBDA) {
+    if (lambdaOverA() >= UNIFORM_CAPTION_LAMBDA) {
       capA.textContent = '파장이 표시 범위보다 커서 입사파가 균일하게 보입니다';
       capA.className = 'caption warn';
     } else {
@@ -567,7 +605,7 @@
   function renderStripes(k) {
     var el = document.getElementById('stripeReadout');
     if (!el) return;
-    var halfPeriods = (2 * k) / Math.PI; // 2ka / π,  a = 1
+    var halfPeriods = (2 * k * aUm) / Math.PI; // 2ka / π
     var txt, note;
     if (halfPeriods < 0.15) {
       txt = '거의 단색';
@@ -607,7 +645,8 @@
       ctx.fillStyle = 'rgb(' + Math.round(rgb[0]) + ',' + Math.round(rgb[1]) + ',' + Math.round(rgb[2]) + ')';
       ctx.beginPath();
       // 넓이가 m에 비례하도록 반지름은 √m
-      ctx.arc(v.X(col.z), v.Y(col.x), rMax * Math.sqrt(col.m / 20), 0, 2 * Math.PI);
+      // col 좌표는 μm 다. 이 패널의 좌표계는 a 단위(halfSpan = 1.15a)이므로 나눈다.
+      ctx.arc(v.X(col.z / aUm), v.Y(col.x / aUm), rMax * Math.sqrt(col.m / 20), 0, 2 * Math.PI);
       ctx.fill();
     }
 
@@ -635,7 +674,8 @@
     var pts = physGrid.points;
     var N = physGrid.N;
 
-    var key = k.toExponential(12) + '|' + th.toExponential(12);
+    // a 가 바뀌면 physGrid 가 새로 만들어지므로 정렬 캐시도 무효가 된다.
+    var key = k.toExponential(12) + '|' + th.toExponential(12) + '|' + aUm.toExponential(12);
     if (walkOrderKey !== key) {
       var idx = new Array(pts.length);
       var proj = new Float64Array(pts.length);
@@ -935,11 +975,59 @@
     return v >= 1000 ? v.toExponential(0) : String(v);
   }
 
+  // 길이는 μm 로 저장하고 표시 단위만 자동 전환한다 (nm → μm → mm → cm → m)
+  function fmtLen(um) {
+    var v, u;
+    if (um < 1) { v = um * 1e3; u = 'nm'; }
+    else if (um < 1e3) { v = um; u = 'μm'; }
+    else if (um < 1e4) { v = um / 1e3; u = 'mm'; }
+    else if (um < 1e6) { v = um / 1e4; u = 'cm'; }
+    else { v = um / 1e6; u = 'm'; }
+    var s = v >= 100 ? v.toFixed(0) : (v >= 10 ? v.toFixed(1) : v.toFixed(2));
+    return s + ' ' + u;
+  }
+
+  function fmtQ(q) {
+    return q >= 0.01 ? q.toFixed(2) : q.toExponential(1);
+  }
+
+  // Q_sca = σ/(πa²). σ 는 물리 격자(nd=20) 경로인 sigma1D 를 그대로 쓴다.
+  // 316열 × 32노드라 드래그 중 매 입력마다 불러도 부담이 없다.
+  function computeDerived() {
+    var r = RGD.sigma1D(physGrid, waveK(), alphaTotal());
+    return { G: r.G, Q: r.sigma / (Math.PI * aUm * aUm) };
+  }
+
   function updateReadout() {
-    var x = (2 * Math.PI) / lambda;
+    var x = sizeX();
+    var d = computeDerived();
+    // Q > 1 은 버그가 아니라 RGD 근사(|m−1| ≪ 1)가 무너진다는 신호다.
+    // 값을 자르거나 계수를 조정하지 않고 빨간색으로 표시만 한다.
     document.getElementById('lambdaReadout').innerHTML =
-      'λ/a = ' + fmtLambda(lambda) + '<span class="sep">·</span>x = ' +
-      (x >= 0.001 ? x.toFixed(4) : x.toExponential(3));
+      'a = ' + fmtLen(aUm) + '<span class="sep">·</span>' +
+      'λ = ' + fmtLen(lambdaUm) + '<span class="sep">·</span>' +
+      'λ/a = ' + fmtLambda(lambdaOverA()) + '<span class="sep">·</span>' +
+      'x = ' + (x >= 0.001 ? x.toFixed(4) : x.toExponential(3)) + '<span class="sep">·</span>' +
+      'G = ' + d.G.toFixed(3) + '<span class="sep">·</span>' +
+      'Q = <b class="' + (d.Q > 1 ? 'q-hot' : 'q-ok') + '">' + fmtQ(d.Q) + '</b>';
+    updateNotices();
+  }
+
+  // 상태 배지 — λ/a 고정, 적용 범위 밖
+  function updateNotices() {
+    var lock = document.getElementById('lockNotice');
+    lock.hidden = !lockRatio;
+    lock.textContent = atLimit
+      ? 'λ/a 고정 — 슬라이더 끝에 닿아 함께 멈춤'
+      : 'λ/a 고정 — 그림이 변하지 않습니다';
+    lock.classList.toggle('limit', atLimit);
+
+    var out = lambdaOverA() < LAMBDA_OVER_A_MIN;
+    document.getElementById('rangeNotice').hidden = !out;
+    document.body.classList.toggle('out-of-range', out);
+
+    document.getElementById('aSlider').classList.toggle('at-limit', atLimit);
+    document.getElementById('lambdaSlider').classList.toggle('at-limit', atLimit);
   }
 
   // ---------------------------------------------------------------------
@@ -956,7 +1044,7 @@
     // 브라우저가 "계산 중…"을 페인트할 틈을 주기 위해 한 틱 미룬다.
     setTimeout(function () {
       compute();
-      computeFCurve((2 * Math.PI) / lambda); // (F) 곡선도 λ에만 의존한다
+      computeFCurve(waveK()); // (F) 곡선도 a·λ 에만 의존한다
       render();
       status.textContent = '';
     }, 0);
@@ -973,28 +1061,76 @@
   // 배선
   // ---------------------------------------------------------------------
 
-  var slider = document.getElementById('lambdaSlider');
+  var aSlider = document.getElementById('aSlider');
+  var lamSlider = document.getElementById('lambdaSlider');
+  var lockBox = document.getElementById('lockBox');
 
-  function sliderToLambda(v) {
-    var f = v / 1000;
-    return LAMBDA_MIN * Math.pow(LAMBDA_MAX / LAMBDA_MIN, f);
-  }
+  function toLog(v, min, max) { return min * Math.pow(max / min, v / 1000); }
 
-  function lambdaToSlider(l) {
-    var f = Math.log(l / LAMBDA_MIN) / Math.log(LAMBDA_MAX / LAMBDA_MIN);
+  function fromLog(x, min, max) {
+    var f = Math.log(x / min) / Math.log(max / min);
     return Math.round(Math.min(Math.max(f, 0), 1) * 1000);
   }
 
-  // 슬라이더는 input이 아니라 change 이벤트에서 재계산한다(기존 시뮬레이션과
-  // 동일한 관례) — 드래그 중 매 프레임 302만 쌍을 다시 도는 것을 피한다.
-  slider.addEventListener('input', function () {
-    lambda = sliderToLambda(parseFloat(slider.value));
-    updateReadout();
-    clearPresetHighlight();
-  });
-  slider.addEventListener('change', function () {
-    lambda = sliderToLambda(parseFloat(slider.value));
-    recompute();
+  function syncSliders() {
+    aSlider.value = fromLog(aUm, A_MIN, A_MAX);
+    lamSlider.value = fromLog(lambdaUm, LAM_MIN, LAM_MAX);
+  }
+
+  // 고정 상태에서 한쪽이 범위 끝에 닿으면 두 슬라이더를 그 자리에서 함께
+  // 멈춘다 — 비율 유지가 이 체크박스의 약속이므로, 조용히 어긋나게 두지 않는다.
+  // 두 범위를 λ/a 로 환산해 겹치는 구간으로 자르면 한 번에 처리된다.
+  function setPair(a, lam) {
+    atLimit = false;
+    if (lockRatio) {
+      var loA = Math.max(A_MIN, LAM_MIN / lockedRatio);
+      var hiA = Math.min(A_MAX, LAM_MAX / lockedRatio);
+      var ca = Math.min(Math.max(a, loA), hiA);
+      // "이번에 잘렸는가"가 아니라 "결과가 경계에 앉아 있는가"로 판정한다.
+      // input 다음에 오는 change 가 이미 잘린 값을 다시 넣으므로, 잘림
+      // 여부로 판정하면 표시가 곧바로 지워진다.
+      // a 자신의 끝은 슬라이더 위치로 이미 보이므로, λ 쪽 범위가 먼저
+      // 걸려서 a 가 제 끝에 닿지 못한 경우만 알린다.
+      atLimit =
+        (LAM_MIN / lockedRatio > A_MIN && ca <= loA * (1 + 1e-9)) ||
+        (LAM_MAX / lockedRatio < A_MAX && ca >= hiA * (1 - 1e-9));
+      a = ca;
+      lam = ca * lockedRatio;
+    } else {
+      a = Math.min(Math.max(a, A_MIN), A_MAX);
+      lam = Math.min(Math.max(lam, LAM_MIN), LAM_MAX);
+    }
+    aUm = a;
+    lambdaUm = lam;
+    rebuildGrids(); // 격자는 a 에 의존한다
+  }
+
+  function driveA(a) { setPair(a, lockRatio ? a * lockedRatio : lambdaUm); }
+  function driveLam(l) { setPair(lockRatio ? l / lockedRatio : aUm, l); }
+
+  // 슬라이더는 input이 아니라 change 이벤트에서 재계산한다(기존 관례) —
+  // 드래그 중 매 프레임 장 전체를 다시 도는 것을 피한다. 판독창과 짝
+  // 슬라이더는 input 에서 즉시 따라간다.
+  function wireSlider(el, drive, min, max) {
+    el.addEventListener('input', function () {
+      drive(toLog(parseFloat(el.value), min, max));
+      syncSliders();
+      updateReadout();
+      clearPresetHighlight();
+    });
+    // change 에서는 슬라이더 값을 다시 읽지 않는다. 위치가 1/1000 로
+    // 양자화되어 있어 되읽으면 input 이 정한 값이 미세하게 어긋나고,
+    // 그 오차 때문에 "경계에 앉아 있다"는 판정이 곧바로 풀린다.
+    el.addEventListener('change', function () { recompute(); });
+  }
+  wireSlider(aSlider, driveA, A_MIN, A_MAX);
+  wireSlider(lamSlider, driveLam, LAM_MIN, LAM_MAX);
+
+  lockBox.addEventListener('change', function () {
+    lockRatio = this.checked;
+    lockedRatio = lambdaUm / aUm; // 누른 시점의 비를 고정한다
+    atLimit = false;
+    updateNotices();
   });
 
   function clearPresetHighlight() {
@@ -1007,9 +1143,15 @@
     presetButtons[b].addEventListener('click', function () {
       clearPresetHighlight();
       this.classList.add('active');
-      lambda = parseFloat(this.getAttribute('data-lambda'));
-      // 21cm 프리셋(λ/a = 2.1e6)은 슬라이더 범위 밖이므로 슬라이더는 끝에 붙는다
-      slider.value = lambdaToSlider(lambda);
+      var pa = parseFloat(this.getAttribute('data-a'));
+      var pl = parseFloat(this.getAttribute('data-lambda'));
+      // 프리셋은 두 값을 한꺼번에 정한다. 고정이 켜져 있으면 비를 새 값으로
+      // 갱신한다 — 체크는 그대로 두되 프리셋과 어긋나지 않게 한다.
+      lockRatio = false;
+      setPair(pa, pl);
+      lockRatio = lockBox.checked;
+      lockedRatio = pl / pa;
+      syncSliders();
       recompute();
     });
   }
@@ -1124,7 +1266,7 @@
 
   // ---------------------------------------------------------------------
 
-  slider.value = lambdaToSlider(lambda);
+  syncSliders();
   setTab(1); // 탭 1이 기본. 컨트롤 그룹 표시 상태를 초기화한다
   recompute();
 

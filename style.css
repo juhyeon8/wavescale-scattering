@@ -22,11 +22,15 @@ body {
 
 /* ---------------- 컨트롤 스트립 ---------------- */
 
+/* 줄바꿈을 허용하면 판독창 글자 수가 바뀔 때(예: "500 nm" → "1.00 μm")
+   컨트롤 줄이 한 줄 늘어나 패널 높이가 따라 변한다. λ/a 를 고정했는데도
+   그림 크기가 달라져 "같은 그림"인지 눈으로 확인할 수 없게 되므로,
+   한 줄로 고정하고 판독창이 남는 폭을 흡수하게 한다. */
 .controls {
   flex: none;
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 6px 18px;
   padding: 6px 10px;
   background: #fff;
@@ -36,6 +40,10 @@ body {
 
 /* 컨트롤 그룹은 자기 탭에서만 보인다 (λ/a 표시는 두 탭 공통) */
 .ctl-group[hidden] { display: none; }
+
+/* 판독창만 줄어들게 한다. 다른 항목이 줄면 버튼 글자가 두 줄로 접혀
+   컨트롤 줄 높이가 다시 변한다. */
+.controls > * { flex-shrink: 0; }
 
 .ctl-group {
   display: flex;
@@ -50,9 +58,48 @@ body {
   white-space: nowrap;
 }
 
-#lambdaSlider { width: 260px; }
+#aSlider, #lambdaSlider { width: 150px; }
+
+/* 고정 상태에서 슬라이더가 범위 끝에 닿았음을 알린다 */
+input[type="range"].at-limit { accent-color: #c0392b; }
+
+.lock {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 600;
+  color: #555;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.lock input { margin: 0; cursor: pointer; }
+
+/* 상태 배지 — λ/a 고정 · 적용 범위 밖 */
+.notice {
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 3px;
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+
+.notice[hidden] { display: none; }
+
+.lock-notice { color: #2f6f9f; background: #eaf2f8; border: 1px solid #9bbdd8; }
+.lock-notice.limit { color: #c0392b; background: #fdecea; border-color: #e6b0aa; }
+.range-notice { color: #b8860b; background: #fdf6e3; border: 1px solid #e0cfa0; }
+
+/* 적용 범위 밖 — 그림을 흐리게, 숫자를 회색으로. 계산은 계속한다. */
+.out-of-range .panel .body { opacity: 0.4; }
+.out-of-range .readout { color: #999; background: #f4f4f4; border-color: #e0e0e0; }
+.out-of-range .readout b { color: #999 !important; }
 
 .readout {
+  flex: 0 1 auto;
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
   font-family: Consolas, "D2Coding", monospace;
   font-size: 12px;
   background: #f0f4f8;
@@ -62,11 +109,16 @@ body {
   white-space: nowrap;
 }
 
-.readout .sep { color: #aaa; margin: 0 8px; }
+.readout .sep { color: #aaa; margin: 0 7px; }
+
+/* Q > 1 은 RGD 근사가 무너진다는 신호다 — 값은 그대로 두고 색으로만 알린다 */
+.readout .q-ok { color: #1a1a1a; }
+.readout .q-hot { color: #c0392b; }
 
 .presets button {
   font: inherit;
   font-size: 12px;
+  white-space: nowrap;
   padding: 3px 8px;
   border: 1px solid #ccc;
   border-radius: 3px;

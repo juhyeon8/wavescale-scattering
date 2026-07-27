@@ -14,18 +14,20 @@
 
 <div class="controls">
   <div class="ctl-group" data-tab="1">
-    <label for="lambdaSlider">λ/a</label>
+    <label for="aSlider">입자 반지름 a</label>
+    <input type="range" id="aSlider" min="0" max="1000" value="0">
+    <label for="lambdaSlider">파장 λ</label>
     <input type="range" id="lambdaSlider" min="0" max="1000" value="0">
+    <label class="lock"><input type="checkbox" id="lockBox"> λ/a 고정</label>
   </div>
 
-  <span class="readout" id="lambdaReadout">λ/a = 3.1416<span class="sep">·</span>x = 2.0000</span>
+  <span class="readout" id="lambdaReadout"></span>
+  <span class="notice lock-notice" id="lockNotice" hidden></span>
+  <span class="notice range-notice" id="rangeNotice" hidden>λ/a &lt; π — 이 모형의 적용 범위 밖</span>
 
   <div class="ctl-group presets" data-tab="1">
-    <button type="button" data-lambda="2.1e6">21cm 전파</button>
-    <button type="button" data-lambda="5">가시광선 500nm</button>
-    <button type="button" data-lambda="12">경계 12</button>
-    <button type="button" data-lambda="17">경계 17</button>
-    <button type="button" data-lambda="40">경계 40</button>
+    <button type="button" class="active" data-a="0.1" data-lambda="0.5">성간 티끌 + 가시광선</button>
+    <button type="button" data-a="0.1" data-lambda="2.1e5">성간 티끌 + 21cm 전파</button>
   </div>
 
   <div class="ctl-group" data-tab="1">
